@@ -1,5 +1,6 @@
 use pyo3::prelude::*;
 
+pub mod aggregator;
 pub mod cost_func;
 pub mod csf;
 pub mod disaster_cost;
@@ -7,8 +8,11 @@ pub mod payoff_func;
 pub mod prod_func;
 pub mod reward_func;
 pub mod risk_func;
+pub mod state;
 pub mod strategies;
 pub mod pybindings;
+
+pub mod prelude;
 
 pub use pybindings as py;
 

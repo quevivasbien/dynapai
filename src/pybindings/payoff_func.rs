@@ -1,17 +1,9 @@
-use crate::cost_func::*;
-use crate::csf::DefaultCSF;
-use crate::disaster_cost::ConstantDisasterCost;
-use crate::payoff_func::*;
-use crate::prod_func::*;
-use crate::reward_func::LinearReward;
-use crate::risk_func::WinnerOnlyRisk;
-use crate::strategies::*;
-
 use crate::py::*;
+
 
 #[derive(Clone)]
 #[pyclass(name = "PayoffFunc")]
-pub struct PyPayoffFunc(pub BoxedModularPayoff<Actions>);
+pub struct PyPayoffFunc(pub ModularPayoff<Actions>);
 
 #[pymethods]
 impl PyPayoffFunc {
@@ -23,7 +15,7 @@ impl PyPayoffFunc {
         r: PyReadonlyArray1<f64>,
     ) -> Self {
         let n = ProdFunc::<Actions>::n(&prod_func.0);
-        Self(BoxedModularPayoff::new(
+        Self(ModularPayoff::new(
             Box::new(prod_func.0),
             Box::new(WinnerOnlyRisk { theta: theta.as_array().to_owned() }),
             Box::new(DefaultCSF),
@@ -48,7 +40,7 @@ impl PyPayoffFunc {
 
 #[derive(Clone)]
 #[pyclass(name = "InvestPayoffFunc")]
-pub struct PyInvestPayoffFunc(pub BoxedModularPayoff<InvestActions>);
+pub struct PyInvestPayoffFunc(pub ModularPayoff<InvestActions>);
 
 #[pymethods]
 impl PyInvestPayoffFunc {
@@ -61,7 +53,7 @@ impl PyInvestPayoffFunc {
         r_inv: PyReadonlyArray1<f64>,
     ) -> Self {
         let n = ProdFunc::<InvestActions>::n(&prod_func.0);
-        Self(BoxedModularPayoff::new(
+        Self(ModularPayoff::new(
             Box::new(prod_func.0),
             Box::new(WinnerOnlyRisk { theta: theta.as_array().to_owned() }),
             Box::new(DefaultCSF),

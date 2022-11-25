@@ -1,13 +1,7 @@
 use dyn_clone::DynClone;
 use numpy::ndarray::{Array, Ix1};
 
-use crate::cost_func::CostFunc;
-use crate::csf::CSF;
-use crate::disaster_cost::DisasterCost;
-use crate::prod_func::ProdFunc;
-use crate::reward_func::RewardFunc;
-use crate::risk_func::RiskFunc;
-use crate::strategies::{ActionType, MutatesOn};
+use crate::prelude::*;
 
 pub trait PayoffFunc: DynClone + Send + Sync {
     type Act: ActionType;
@@ -18,8 +12,22 @@ pub trait PayoffFunc: DynClone + Send + Sync {
     }
 }
 
+impl<A: ActionType> Clone for Box<dyn PayoffFunc<Act = A>> {
+    fn clone(&self) -> Self {
+        dyn_clone::clone_box(&**self)
+    }
+}
+
+impl<A: ActionType> PayoffFunc for Box<dyn PayoffFunc<Act = A>> {
+    type Act = A;
+    fn n(&self) -> usize { self.as_ref().n() }
+    fn u_i(&self, i: usize, actions: &A) -> f64 { self.as_ref().u_i(i, actions) }
+    fn u(&self, actions: &A) -> Array<f64, Ix1> { self.as_ref().u(actions) }
+}
+
+
 #[derive(Clone)]
-pub struct ModularPayoff<A, T, U, V, W, X, Y>
+pub struct DefaultPayoff<A, T, U, V, W, X, Y>
 where A: ActionType,
       T: ProdFunc<A>,
       U: RiskFunc,
@@ -38,7 +46,7 @@ where A: ActionType,
     _phantom: std::marker::PhantomData<A>,
 }
 
-impl<A, T, U, V, W, X, Y> ModularPayoff<A, T, U, V, W, X, Y>
+impl<A, T, U, V, W, X, Y> DefaultPayoff<A, T, U, V, W, X, Y>
 where A: ActionType,
       T: ProdFunc<A>,
       U: RiskFunc,
@@ -49,16 +57,16 @@ where A: ActionType,
 {
     pub fn new(
         prod_func: T, risk_func: U, csf: V, reward_func: W, disaster_cost: X, cost_func: Y
-    ) -> Result<ModularPayoff<A, T, U, V, W, X, Y>, &'static str> {
+    ) -> Result<DefaultPayoff<A, T, U, V, W, X, Y>, &'static str> {
         let n = prod_func.n();
         if n != risk_func.n()
             || n != reward_func.n()
             || n != disaster_cost.n()
             || n != cost_func.n()
         {
-            return Err("When creating new ModularPayoff: All components must have the same n");
+            return Err("When creating new DefaultPayoff: All components must have the same n");
         }
-        Ok(ModularPayoff {
+        Ok(DefaultPayoff {
             n,
             prod_func,
             risk_func,
@@ -71,7 +79,7 @@ where A: ActionType,
     }
 }
 
-impl<A, T, U, V, W, X, Y> PayoffFunc for ModularPayoff<A, T, U, V, W, X, Y>
+impl<A, T, U, V, W, X, Y> PayoffFunc for DefaultPayoff<A, T, U, V, W, X, Y>
 where A: ActionType + Clone,
       T: ProdFunc<A> + Clone,
       U: RiskFunc + Clone,
@@ -133,21 +141,8 @@ where A: ActionType + Clone,
     }
 }
 
-impl<A, T, U, V, W, X, Y> MutatesOn<A> for ModularPayoff<A, T, U, V, W, X, Y>
-where A: ActionType,
-      T: ProdFunc<A> + MutatesOn<A>,
-      U: RiskFunc,
-      V: CSF,
-      W: RewardFunc,
-      X: DisasterCost,
-      Y: CostFunc<A>,
-{
-    fn mutate_on(&mut self, action: &A) {
-        self.prod_func.mutate_on(action);
-    }
-}
 
-pub type BoxedModularPayoff<A> = ModularPayoff<
+pub type ModularPayoff<A> = DefaultPayoff<
     A,
     Box<dyn ProdFunc<A>>,
     Box<dyn RiskFunc>,
@@ -156,3 +151,7 @@ pub type BoxedModularPayoff<A> = ModularPayoff<
     Box<dyn DisasterCost>,
     Box<dyn CostFunc<A>>,
 >;
+
+fn hello(x: &Box<ModularPayoff<Actions>>, actions: &Actions) {
+    println!("{:?}", x.u(actions));
+}

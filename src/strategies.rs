@@ -81,19 +81,23 @@ impl ActionType for InvestActions {
 impl InvestActionType for InvestActions {}
 
 
-pub trait StrategyType<A: ActionType>: DynClone + Send + Sync {
-    fn actions(&self) -> &Vec<A>;
+pub trait StrategyType: DynClone + Send + Sync {
+    type Act: ActionType;
+
+    fn actions(&self) -> &Vec<Self::Act>;
 
     fn t(&self) -> usize { self.actions().len() }
     fn n(&self) -> usize;
 
-    fn from_actions(actions: Vec<A>) -> Self where Self: Sized;
+    fn from_actions(actions: Vec<Self::Act>) -> Self where Self: Sized;
 }
 
 #[derive(Clone)]
 pub struct Strategies<A: ActionType>(Vec<A>);
 
-impl <A: ActionType + Clone> StrategyType<A> for Strategies<A> {
+impl <A: ActionType + Clone> StrategyType for Strategies<A> {
+    type Act = A;
+
     fn actions(&self) -> &Vec<A> { &self.0 }
     fn n(&self) -> usize { self.actions()[0].n() }
     fn from_actions(actions: Vec<A>) -> Self {
