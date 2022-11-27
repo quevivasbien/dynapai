@@ -6,6 +6,7 @@ pub use crate::payoff_func::*;
 pub use crate::prod_func::*;
 pub use crate::reward_func::*;
 pub use crate::risk_func::*;
+pub use crate::solve::*;
 pub use crate::state::*;
 pub use crate::strategies::*;
 

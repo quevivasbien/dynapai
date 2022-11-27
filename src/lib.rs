@@ -8,6 +8,7 @@ pub mod payoff_func;
 pub mod prod_func;
 pub mod reward_func;
 pub mod risk_func;
+pub mod solve;
 pub mod state;
 pub mod strategies;
 
@@ -26,5 +27,6 @@ fn dynapai(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<py::PyProdFunc>()?;
     m.add_class::<py::PyPayoffFunc>()?;
     m.add_class::<py::PyInvestPayoffFunc>()?;
+    m.add_class::<py::PyAggregator>()?;
     Ok(())
 }

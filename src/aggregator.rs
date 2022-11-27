@@ -1,4 +1,4 @@
-use dyn_clone::DynClone;
+use dyn_clone::{DynClone, clone_trait_object};
 use numpy::Ix2;
 use numpy::ndarray::{Array, Ix1};
 
@@ -13,18 +13,14 @@ pub trait Aggregator<A: ActionType>: DynClone + Send + Sync {
     }
 }
 
-impl<A: ActionType> Clone for Box<dyn Aggregator<A>> {
-    fn clone(&self) -> Self {
-        dyn_clone::clone_box(&**self)
-    }
-}
+clone_trait_object!(<A> Aggregator<A> where A: ActionType);
 
 
 pub trait Discounter {
     fn gammas(&self) -> &Array<f64, Ix1>;
 }
 
-impl<A: ActionType, T: StateIterator<A> + Discounter> Aggregator<A> for T {
+impl<A: ActionType + 'static, T: StateIterator<A> + Discounter> Aggregator<A> for T {
     fn n(&self) -> usize {
         self.state0().n()
     }
@@ -65,7 +61,7 @@ pub struct FixedStateDiscounter<A: ActionType> {
     pub gammas: Array<f64, Ix1>,
 }
 
-impl<A: ActionType> FixedStateDiscounter<A> {
+impl<A: ActionType + 'static> FixedStateDiscounter<A> {
     pub fn new(state: Box<dyn State<A>>, gammas: Array<f64, Ix1>) -> Result<Self, &'static str> {
         if state.n() != gammas.len() {
             return Err("When creating new FixedStateDiscounter: gammas must have length == n");
@@ -93,7 +89,7 @@ pub struct DynStateDiscounter<A: ActionType> {
     pub gammas: Array<f64, Ix1>,
 }
 
-impl<A: ActionType> DynStateDiscounter<A> {
+impl<A: ActionType + 'static> DynStateDiscounter<A> {
     pub fn new(state0: Box<dyn State<A>>, gammas: Array<f64, Ix1>) -> Result<Self, &'static str> {
         if state0.n() != gammas.len() {
             return Err("When creating new DynStateDiscounter: gammas must have length == n");
@@ -137,7 +133,7 @@ where A: ActionType + Clone + 'static,
         // check that the states given by the child have ModularPayoff beliefs
         let state0 = child.state0();
         for i in 0..state0.n() {
-            if let None = CastableAs::<ModularPayoff<A>>::cast(state0.belief(i)) {
+            if let None = state0.belief(i).downcast_ref::<ModularPayoff<A>>() {
                 return Err("The provided states should all contain ModularPayoff types")
             }
         }
@@ -152,9 +148,9 @@ where A: ActionType + Clone + 'static,
             for i in 0..self.n() {
                 all_probas.push(probas[i]);
                 if t != strategies.t() - 1 {
-                    let payoff_func = CastableAs::<ModularPayoff<A>>::cast(
-                        state.belief(i)
-                    ).expect("Belief should be ModularPayoff, but found something else");
+                    let payoff_func = state.belief(i).downcast_ref::<ModularPayoff<A>>().expect(
+                        "Belief should be ModularPayoff, but found something else"
+                    );
                     let (_, p) = payoff_func.prod_func.f(actions);
                     probas[i] *= 1. - payoff_func.csf.q(p.view()).iter().sum::<f64>();
                 }
@@ -194,9 +190,9 @@ where A: ActionType + Clone + 'static,
         let mut proba = 1.;  // probability that nobody has won yet
         let mut u = 0.;
         for (t, actions) in actions_seq.iter().enumerate() {
-            let payoff_func = CastableAs::<ModularPayoff<A>>::cast(
-                state.belief(i)
-            ).expect("Belief should be ModularPayoff, but found something else");
+            let payoff_func = state.belief(i).downcast_ref::<ModularPayoff<A>>().expect(
+                "Belief should be ModularPayoff, but found something else"
+            );
             u += proba * gamma.powi(t.try_into().unwrap()) * payoff_func.u_i(i, actions);
             if t != strategies.t() - 1 {
                 // update proba
@@ -216,9 +212,9 @@ where A: ActionType + Clone + 'static,
         let mut u: Array<f64, Ix1> = Array::zeros(gammas.len());
         for (t, actions) in actions_seq.iter().enumerate() {
             u.iter_mut().zip(gammas.iter()).enumerate().for_each(|(i, (u_i, gamma))| {
-                let payoff_func = CastableAs::<ModularPayoff<A>>::cast(
-                    state.belief(i)
-                ).expect("Belief should be ModularPayoff, but found something else");
+                let payoff_func = state.belief(i).downcast_ref::<ModularPayoff<A>>().expect(
+                    "Belief should be ModularPayoff, but found something else"
+                );
                 // update u
                 *u_i += probas[i] * gamma.powi(t.try_into().unwrap()) * payoff_func.u_i(i, actions);
                 if t != strategies.t() - 1 {

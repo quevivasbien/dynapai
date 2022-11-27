@@ -1,9 +1,10 @@
 use std::fmt;
 
+use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::{DynClone, clone_trait_object};
 use numpy::ndarray::{ArrayView, Ix1, Array};
 
-pub trait RiskFunc: DynClone + Send + Sync {
+pub trait RiskFunc: DynClone + Downcast + Send + Sync {
     // sigma_i is proba(safe | i wins)
     fn sigma_i(&self, i: usize, s: ArrayView<f64, Ix1>, p: ArrayView<f64, Ix1>) -> f64;
     fn sigma(&self, s: ArrayView<f64, Ix1>, p: ArrayView<f64, Ix1>) -> Array<f64, Ix1> {
@@ -14,6 +15,7 @@ pub trait RiskFunc: DynClone + Send + Sync {
 }
 
 clone_trait_object!(RiskFunc);
+impl_downcast!(RiskFunc);
 
 impl RiskFunc for Box<dyn RiskFunc> {
     fn sigma_i(&self, i: usize, s: ArrayView<f64, Ix1>, p: ArrayView<f64, Ix1>) -> f64 {

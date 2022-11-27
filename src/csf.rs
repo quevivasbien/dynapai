@@ -1,7 +1,8 @@
+use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::{DynClone, clone_trait_object};
 use numpy::ndarray::{Array, ArrayView, Ix1};
 
-pub trait CSF: DynClone + Send + Sync {
+pub trait CSF: DynClone + Downcast + Send + Sync {
     fn q_i(&self, i: usize, p: ArrayView<f64, Ix1>) -> f64;
     fn q(&self, p: ArrayView<f64, Ix1>) -> Array<f64, Ix1> {
         Array::from_iter((0..p.len()).map(|i| self.q_i(i, p)))
@@ -9,15 +10,8 @@ pub trait CSF: DynClone + Send + Sync {
 }
 
 clone_trait_object!(CSF);
+impl_downcast!(CSF);
 
-impl CSF for Box<dyn CSF> {
-    fn q_i(&self, i: usize, p: ArrayView<f64, Ix1>) -> f64 {
-        self.as_ref().q_i(i, p)
-    }
-    fn q(&self, p: ArrayView<f64, Ix1>) -> Array<f64, Ix1> {
-        self.as_ref().q(p)
-    }
-}
 
 #[derive(Clone)]
 pub struct DefaultCSF;

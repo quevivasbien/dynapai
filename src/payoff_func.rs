@@ -1,9 +1,10 @@
-use dyn_clone::DynClone;
+use downcast_rs::{Downcast, impl_downcast};
+use dyn_clone::{DynClone, clone_trait_object};
 use numpy::ndarray::{Array, Ix1};
 
 use crate::prelude::*;
 
-pub trait PayoffFunc<A: ActionType>: DynClone + MutatesOn<A> + Send + Sync {
+pub trait PayoffFunc<A: ActionType>: DynClone + Downcast + MutatesOn<A> + Send + Sync {
     fn n(&self) -> usize;
     fn u_i(&self, i: usize, actions: &A) -> f64;
     fn u(&self, actions: &A) -> Array<f64, Ix1> {
@@ -11,11 +12,8 @@ pub trait PayoffFunc<A: ActionType>: DynClone + MutatesOn<A> + Send + Sync {
     }
 }
 
-impl<A: ActionType> Clone for Box<dyn PayoffFunc<A>> {
-    fn clone(&self) -> Self {
-        dyn_clone::clone_box(&**self)
-    }
-}
+clone_trait_object!(<A> PayoffFunc<A> where A: ActionType);
+impl_downcast!(PayoffFunc<A> where A: ActionType);
 
 #[derive(Clone)]
 pub struct ModularPayoff<A: ActionType + Clone>
@@ -29,7 +27,7 @@ pub struct ModularPayoff<A: ActionType + Clone>
     pub cost_func: Box<dyn CostFunc<A>>,
 }
 
-impl<A: ActionType + Clone> ModularPayoff<A>
+impl<A: ActionType + Clone + 'static> ModularPayoff<A>
 {
     pub fn new(
         prod_func: Box<dyn ProdFunc<A>>,
@@ -65,7 +63,7 @@ impl<A: ActionType + Clone> MutatesOn<A> for ModularPayoff<A> {
     }
 }
 
-impl<A: ActionType + Clone> PayoffFunc<A> for ModularPayoff<A>
+impl<A: ActionType + Clone + 'static> PayoffFunc<A> for ModularPayoff<A>
 {
     fn n(&self) -> usize {
         self.n
@@ -116,11 +114,5 @@ impl<A: ActionType + Clone> PayoffFunc<A> for ModularPayoff<A>
         let cost = self.cost_func.c(actions);
 
         Array::from_iter(net_rewards.zip(cost.iter()).map(|(r, c)| r - c))
-    }
-}
-
-impl<A: ActionType + Clone + 'static> CastableAs<ModularPayoff<A>> for Box<dyn PayoffFunc<A>> {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
     }
 }

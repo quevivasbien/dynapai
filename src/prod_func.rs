@@ -1,10 +1,11 @@
+use downcast_rs::{Downcast, impl_downcast};
 use numpy::ndarray::{Array, Ix1};
-use dyn_clone::DynClone;
+use dyn_clone::{DynClone, clone_trait_object};
 use std::fmt;
 
 use crate::strategies::*;
 
-pub trait ProdFunc<A: ActionType>: DynClone + MutatesOn<A> + Send + Sync {
+pub trait ProdFunc<A: ActionType>: DynClone + Downcast + MutatesOn<A> + Send + Sync {
     fn f_i(&self, i: usize, actions: &A) -> (f64, f64);
     fn f(&self, actions: &A) -> (Array<f64, Ix1>, Array<f64, Ix1>) {
         let (s, p) = (0..actions.n()).map(|i| self.f_i(i, actions)).unzip();
@@ -14,12 +15,8 @@ pub trait ProdFunc<A: ActionType>: DynClone + MutatesOn<A> + Send + Sync {
     fn n(&self) -> usize;
 }
 
-// long form of clone_trait_object!(ProdFunc<A>):
-impl<A: ActionType> Clone for Box<dyn ProdFunc<A>> {
-    fn clone(&self) -> Self {
-        dyn_clone::clone_box(&**self)
-    }
-}
+clone_trait_object!(<A> ProdFunc<A> where A: ActionType);
+impl_downcast!(ProdFunc<A> where A: ActionType);
 
 
 #[derive(Clone, Debug)]

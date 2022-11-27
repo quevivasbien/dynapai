@@ -1,21 +1,19 @@
-use dyn_clone::DynClone;
+use downcast_rs::{Downcast, impl_downcast};
+use dyn_clone::{DynClone, clone_trait_object};
 
 use crate::prelude::*;
 
 
-pub trait State<A: ActionType>: DynClone + MutatesOn<A> + Send + Sync {
+pub trait State<A: ActionType>: DynClone + Downcast + MutatesOn<A> + Send + Sync {
     fn n(&self) -> usize;
     fn belief(&self, i: usize) -> &Box<dyn PayoffFunc<A>>;
 }
 
-impl<A: ActionType> Clone for Box<dyn State<A>> {
-    fn clone(&self) -> Self {
-        dyn_clone::clone_box(&**self)
-    }
-}
+clone_trait_object!(<A> State<A> where A: ActionType);
+impl_downcast!(State<A> where A: ActionType);
 
 #[derive(Clone)]
-pub struct CommonBeliefs<A: ActionType>(Box<dyn PayoffFunc<A>>);
+pub struct CommonBeliefs<A: ActionType>(pub Box<dyn PayoffFunc<A>>);
 
 impl<A: ActionType> MutatesOn<A> for CommonBeliefs<A> {
     fn mutate_on(&mut self, actions: &A) {
@@ -23,7 +21,7 @@ impl<A: ActionType> MutatesOn<A> for CommonBeliefs<A> {
     }
 }
 
-impl<A: ActionType + Clone> State<A> for CommonBeliefs<A> {
+impl<A: ActionType + Clone + 'static> State<A> for CommonBeliefs<A> {
     fn n(&self) -> usize {
         self.0.n()
     }
@@ -39,7 +37,7 @@ pub struct HetBeliefs<A: ActionType> {
     beliefs: Vec<Box<dyn PayoffFunc<A>>>,
 }
 
-impl<A: ActionType> HetBeliefs<A> {
+impl<A: ActionType + 'static> HetBeliefs<A> {
     pub fn new(beliefs: Vec<Box<dyn PayoffFunc<A>>>) -> Result<HetBeliefs<A>, &'static str> {
         if beliefs.len() == 0 {
             return Err("When creating new HetBeliefs: beliefs must have length > 0");
@@ -59,8 +57,7 @@ impl<A: ActionType> MutatesOn<A> for HetBeliefs<A> {
     }
 }
 
-// why in the world is this saying that HetBeliefs has conflicting implementions here?
-impl<A: ActionType + Clone> State<A> for HetBeliefs<A> {
+impl<A: ActionType + Clone + 'static> State<A> for HetBeliefs<A> {
     fn n(&self) -> usize {
         self.n
     }
