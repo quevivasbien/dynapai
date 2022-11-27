@@ -4,7 +4,7 @@ use std::fmt;
 
 use crate::strategies::*;
 
-pub trait ProdFunc<A: ActionType>: DynClone + Send + Sync {
+pub trait ProdFunc<A: ActionType>: DynClone + MutatesOn<A> + Send + Sync {
     fn f_i(&self, i: usize, actions: &A) -> (f64, f64);
     fn f(&self, actions: &A) -> (Array<f64, Ix1>, Array<f64, Ix1>) {
         let (s, p) = (0..actions.n()).map(|i| self.f_i(i, actions)).unzip();
@@ -14,18 +14,13 @@ pub trait ProdFunc<A: ActionType>: DynClone + Send + Sync {
     fn n(&self) -> usize;
 }
 
-impl<A: ActionType> ProdFunc<A> for Box<dyn ProdFunc<A>> {
-    fn f_i(&self, i: usize, actions: &A) -> (f64, f64) { self.as_ref().f_i(i, actions) }
-    fn f(&self, actions: &A) -> (Array<f64, Ix1>, Array<f64, Ix1>) { self.as_ref().f(actions) }
-    fn n(&self) -> usize { self.as_ref().n() }
-}
-
 // long form of clone_trait_object!(ProdFunc<A>):
 impl<A: ActionType> Clone for Box<dyn ProdFunc<A>> {
     fn clone(&self) -> Self {
         dyn_clone::clone_box(&**self)
     }
 }
+
 
 #[derive(Clone, Debug)]
 pub struct DefaultProd {
@@ -44,17 +39,29 @@ impl DefaultProd {
         }
         Ok(DefaultProd { n, a, alpha, b, beta })
     }
-}
 
-impl<A: ActionType> ProdFunc<A> for DefaultProd {
-
-    fn f_i(&self, i: usize, actions: &A) -> (f64, f64) {
+    fn _f_i(&self, i: usize, actions: &dyn ActionType) -> (f64, f64) {
         (
             self.a[i] * actions.xs()[i].powf(self.alpha[i]),
             self.b[i] * actions.xp()[i].powf(self.beta[i])
         )
     }
+}
 
+// need to do this silliness since MutatesOn<A> is not defined for all ProdFunc types
+impl ProdFunc<Actions> for DefaultProd {
+    fn f_i(&self, i: usize, actions: &Actions) -> (f64, f64) {
+        self._f_i(i, actions)
+    }
+    fn n(&self) -> usize {
+        self.n
+    }
+}
+
+impl<A: InvestActionType + Clone> ProdFunc<A> for DefaultProd {
+    fn f_i(&self, i: usize, actions: &A) -> (f64, f64) {
+        self._f_i(i, actions)
+    }
     fn n(&self) -> usize {
         self.n
     }

@@ -1,6 +1,7 @@
 use crate::py::*;
 use crate::unpack_py;
 
+
 #[derive(Clone)]
 #[pyclass(name = "ProdFunc")]
 pub struct PyProdFunc(pub DefaultProd);

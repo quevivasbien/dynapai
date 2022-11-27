@@ -3,70 +3,51 @@ use numpy::ndarray::{Array, Ix1};
 
 use crate::prelude::*;
 
-pub trait PayoffFunc: DynClone + Send + Sync {
-    type Act: ActionType;
+pub trait PayoffFunc<A: ActionType>: DynClone + MutatesOn<A> + Send + Sync {
     fn n(&self) -> usize;
-    fn u_i(&self, i: usize, actions: &Self::Act) -> f64;
-    fn u(&self, actions: &Self::Act) -> Array<f64, Ix1> {
+    fn u_i(&self, i: usize, actions: &A) -> f64;
+    fn u(&self, actions: &A) -> Array<f64, Ix1> {
         Array::from_iter((0..actions.n()).map(|i| self.u_i(i, actions)))
     }
 }
 
-impl<A: ActionType> Clone for Box<dyn PayoffFunc<Act = A>> {
+impl<A: ActionType> Clone for Box<dyn PayoffFunc<A>> {
     fn clone(&self) -> Self {
         dyn_clone::clone_box(&**self)
     }
 }
 
-impl<A: ActionType> PayoffFunc for Box<dyn PayoffFunc<Act = A>> {
-    type Act = A;
-    fn n(&self) -> usize { self.as_ref().n() }
-    fn u_i(&self, i: usize, actions: &A) -> f64 { self.as_ref().u_i(i, actions) }
-    fn u(&self, actions: &A) -> Array<f64, Ix1> { self.as_ref().u(actions) }
-}
-
-
 #[derive(Clone)]
-pub struct DefaultPayoff<A, T, U, V, W, X, Y>
-where A: ActionType,
-      T: ProdFunc<A>,
-      U: RiskFunc,
-      V: CSF,
-      W: RewardFunc,
-      X: DisasterCost,
-      Y: CostFunc<A>,
+pub struct ModularPayoff<A: ActionType + Clone>
 {
     pub n: usize,
-    pub prod_func: T,
-    pub risk_func: U,
-    pub csf: V,
-    pub reward_func: W,
-    pub disaster_cost: X,
-    pub cost_func: Y,
-    _phantom: std::marker::PhantomData<A>,
+    pub prod_func: Box<dyn ProdFunc<A>>,
+    pub risk_func: Box<dyn RiskFunc>,
+    pub csf: Box<dyn CSF>,
+    pub reward_func: Box<dyn RewardFunc>,
+    pub disaster_cost: Box<dyn DisasterCost>,
+    pub cost_func: Box<dyn CostFunc<A>>,
 }
 
-impl<A, T, U, V, W, X, Y> DefaultPayoff<A, T, U, V, W, X, Y>
-where A: ActionType,
-      T: ProdFunc<A>,
-      U: RiskFunc,
-      V: CSF,
-      W: RewardFunc,
-      X: DisasterCost,
-      Y: CostFunc<A>,
+impl<A: ActionType + Clone> ModularPayoff<A>
 {
     pub fn new(
-        prod_func: T, risk_func: U, csf: V, reward_func: W, disaster_cost: X, cost_func: Y
-    ) -> Result<DefaultPayoff<A, T, U, V, W, X, Y>, &'static str> {
+        prod_func: Box<dyn ProdFunc<A>>,
+        risk_func: Box<dyn RiskFunc>,
+        csf: Box<dyn CSF>,
+        reward_func: Box<dyn RewardFunc>,
+        disaster_cost: Box<dyn DisasterCost>,
+        cost_func: Box<dyn CostFunc<A>>
+    ) -> Result<ModularPayoff<A>, &'static str> {
         let n = prod_func.n();
         if n != risk_func.n()
             || n != reward_func.n()
             || n != disaster_cost.n()
             || n != cost_func.n()
         {
-            return Err("When creating new DefaultPayoff: All components must have the same n");
+            return Err("When creating new ModularPayoff: All components must have the same n");
         }
-        Ok(DefaultPayoff {
+        Ok(ModularPayoff {
             n,
             prod_func,
             risk_func,
@@ -74,21 +55,18 @@ where A: ActionType,
             reward_func,
             disaster_cost,
             cost_func,
-            _phantom: std::marker::PhantomData,
         })
     }
 }
 
-impl<A, T, U, V, W, X, Y> PayoffFunc for DefaultPayoff<A, T, U, V, W, X, Y>
-where A: ActionType + Clone,
-      T: ProdFunc<A> + Clone,
-      U: RiskFunc + Clone,
-      V: CSF + Clone,
-      W: RewardFunc + Clone,
-      X: DisasterCost + Clone,
-      Y: CostFunc<A> + Clone,
+impl<A: ActionType + Clone> MutatesOn<A> for ModularPayoff<A> {
+    fn mutate_on(&mut self, actions: &A) {
+        self.prod_func.as_mut().mutate_on(actions);
+    }
+}
+
+impl<A: ActionType + Clone> PayoffFunc<A> for ModularPayoff<A>
 {
-    type Act = A;
     fn n(&self) -> usize {
         self.n
     }
@@ -141,17 +119,8 @@ where A: ActionType + Clone,
     }
 }
 
-
-pub type ModularPayoff<A> = DefaultPayoff<
-    A,
-    Box<dyn ProdFunc<A>>,
-    Box<dyn RiskFunc>,
-    Box<dyn CSF>,
-    Box<dyn RewardFunc>,
-    Box<dyn DisasterCost>,
-    Box<dyn CostFunc<A>>,
->;
-
-fn hello(x: &Box<ModularPayoff<Actions>>, actions: &Actions) {
-    println!("{:?}", x.u(actions));
+impl<A: ActionType + Clone + 'static> CastableAs<ModularPayoff<A>> for Box<dyn PayoffFunc<A>> {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

@@ -1,18 +1,21 @@
-use std::marker::PhantomData;
-
+use dyn_clone::DynClone;
 use numpy::Ix2;
 use numpy::ndarray::{Array, Ix1};
 
 use crate::prelude::*;
 
 
-pub trait Aggregator<S>: Send + Sync
-where S: StrategyType
-{
+pub trait Aggregator<A: ActionType>: DynClone + Send + Sync {
     fn n(&self) -> usize;
-    fn u_i(&self, i: usize, strategies: &S) -> f64;
-    fn u(&self, strategies: &S) -> Array<f64, Ix1> {
+    fn u_i(&self, i: usize, strategies: &Strategies<A>) -> f64;
+    fn u(&self, strategies: &Strategies<A>) -> Array<f64, Ix1> {
         Array::from_iter((0..strategies.n()).map(|i| self.u_i(i, strategies)))
+    }
+}
+
+impl<A: ActionType> Clone for Box<dyn Aggregator<A>> {
+    fn clone(&self) -> Self {
+        dyn_clone::clone_box(&**self)
     }
 }
 
@@ -21,13 +24,11 @@ pub trait Discounter {
     fn gammas(&self) -> &Array<f64, Ix1>;
 }
 
-impl<S, T> Aggregator<S> for T
-where S: StrategyType, T: StateIterator<St = dyn State<PFunc = dyn PayoffFunc<Act = S::Act>>> + Discounter
-{
+impl<A: ActionType, T: StateIterator<A> + Discounter> Aggregator<A> for T {
     fn n(&self) -> usize {
         self.state0().n()
     }
-    fn u_i(&self, i: usize, strategies: &S) -> f64 {
+    fn u_i(&self, i: usize, strategies: &Strategies<A>) -> f64 {
         let actions_seq = strategies.actions();
         let state = &mut self.state0().clone();
         let gammas = self.gammas();
@@ -40,7 +41,7 @@ where S: StrategyType, T: StateIterator<St = dyn State<PFunc = dyn PayoffFunc<Ac
         }
         u
     }
-    fn u(&self, strategies: &S) -> Array<f64, Ix1> {
+    fn u(&self, strategies: &Strategies<A>) -> Array<f64, Ix1> {
         let actions_seq = strategies.actions();
         let state = &mut self.state0().clone();
         let gammas = self.gammas();
@@ -59,37 +60,27 @@ where S: StrategyType, T: StateIterator<St = dyn State<PFunc = dyn PayoffFunc<Ac
 
 
 #[derive(Clone)]
-pub struct FixedStateDiscounter<S, T>
-where S: StrategyType, T: State<PFunc = dyn PayoffFunc<Act = S::Act>>
-{
-    pub state: T,
+pub struct FixedStateDiscounter<A: ActionType> {
+    pub state: Box<dyn State<A>>,
     pub gammas: Array<f64, Ix1>,
-    _phantom: PhantomData<S>
 }
 
-impl<S, T> FixedStateDiscounter<S, T>
-where S: StrategyType, T: State<PFunc = dyn PayoffFunc<Act = S::Act>>
-{
-    pub fn new(state: T, gammas: Array<f64, Ix1>) -> Result<Self, &'static str> {
+impl<A: ActionType> FixedStateDiscounter<A> {
+    pub fn new(state: Box<dyn State<A>>, gammas: Array<f64, Ix1>) -> Result<Self, &'static str> {
         if state.n() != gammas.len() {
             return Err("When creating new FixedStateDiscounter: gammas must have length == n");
         }
-        Ok(FixedStateDiscounter { state, gammas, _phantom: PhantomData })
+        Ok(FixedStateDiscounter { state, gammas })
     }
 }
 
-impl<S, T> StateIterator for FixedStateDiscounter<S, T>
-where S: StrategyType + Clone, T: State<PFunc = dyn PayoffFunc<Act = S::Act>> + Clone
-{
-    type St = T;
-    fn state0(&self) -> &T {
+impl<A: ActionType + Clone> StateIterator<A> for FixedStateDiscounter<A> {
+    fn state0(&self) -> &Box<dyn State<A>> {
         &self.state
     }
 }
 
-impl<S, T> Discounter for FixedStateDiscounter<S, T>
-where S: StrategyType, T: State<PFunc = dyn PayoffFunc<Act = S::Act>>
-{
+impl<A: ActionType> Discounter for FixedStateDiscounter<A> {
     fn gammas(&self) -> &Array<f64, Ix1> {
         &self.gammas
     }
@@ -97,45 +88,32 @@ where S: StrategyType, T: State<PFunc = dyn PayoffFunc<Act = S::Act>>
 
 
 #[derive(Clone)]
-pub struct DynStateDiscounter<S, T>
-where S: StrategyType,
-      T: State<PFunc = dyn PayoffFunc<Act = S::Act>> + MutatesOn<S::Act>,
-{
-    pub state0: T,
+pub struct DynStateDiscounter<A: ActionType> {
+    pub state0: Box<dyn State<A>>,
     pub gammas: Array<f64, Ix1>,
-    _phantom: PhantomData<S>,
 }
 
-impl<S, T> DynStateDiscounter<S, T>
-where S: StrategyType,
-      T: State<PFunc = dyn PayoffFunc<Act = S::Act>> + MutatesOn<S::Act>,
-{
-    pub fn new(state0: T, gammas: Array<f64, Ix1>) -> Result<Self, &'static str> {
+impl<A: ActionType> DynStateDiscounter<A> {
+    pub fn new(state0: Box<dyn State<A>>, gammas: Array<f64, Ix1>) -> Result<Self, &'static str> {
         if state0.n() != gammas.len() {
             return Err("When creating new DynStateDiscounter: gammas must have length == n");
         }
-        Ok(DynStateDiscounter { state0, gammas, _phantom: PhantomData })
+        Ok(DynStateDiscounter { state0, gammas })
     }
 }
 
-impl<S, T> StateIterator for DynStateDiscounter<S, T>
-where S: StrategyType + Clone,
-      T: State<PFunc = dyn PayoffFunc<Act = S::Act>> + MutatesOn<S::Act> + Clone,
+impl<A: ActionType + Clone> StateIterator<A> for DynStateDiscounter<A>
 {
-    type St = T;
-    fn state0(&self) -> &T {
+    fn state0(&self) -> &Box<dyn State<A>> {
         &self.state0
     }
 
-    fn advance_state(&self, state: &mut T, actions: &S::Act) {
+    fn advance_state(&self, state: &mut Box<dyn State<A>>, actions: &A) {
         state.mutate_on(actions);
     }
 }
 
-impl<S, T> Discounter for DynStateDiscounter<S, T>
-where S: StrategyType,
-      T: State<PFunc = dyn PayoffFunc<Act = S::Act>> + MutatesOn<S::Act> + Clone,
-{
+impl<A: ActionType> Discounter for DynStateDiscounter<A> {
     fn gammas(&self) -> &Array<f64, Ix1> {
         &self.gammas
     }
@@ -143,25 +121,29 @@ where S: StrategyType,
 
 
 #[derive(Clone)]
-pub struct EndsOnContestWin<S, T, C>
-where S: StrategyType + Clone,
-      T: State<PFunc = ModularPayoff<S::Act>>,
-      C: Discounter + StateIterator<St = T>
+pub struct EndsOnContestWin<A, C>
+where A: ActionType,
+      C: Discounter + StateIterator<A>
 {
     pub child: C,
-    _phantoms: PhantomData<(S, T)>,
+    _phantom: std::marker::PhantomData<A>,
 }
 
-impl<S, T, C> EndsOnContestWin<S, T, C>
-where S: StrategyType + Clone,
-      S::Act: Clone,
-      T: State<PFunc = ModularPayoff<S::Act>> + MutatesOn<S::Act> + Clone,
-      C: Discounter + StateIterator<St = T> + Clone
+impl<A, C> EndsOnContestWin<A, C>
+where A: ActionType + Clone + 'static,
+      C: Discounter + StateIterator<A> + Clone
 {
-    pub fn new(child: C) -> Self {
-        EndsOnContestWin { child, _phantoms: PhantomData }
+    pub fn new(child: C) -> Result<Self, &'static str> {
+        // check that the states given by the child have ModularPayoff beliefs
+        let state0 = child.state0();
+        for i in 0..state0.n() {
+            if let None = CastableAs::<ModularPayoff<A>>::cast(state0.belief(i)) {
+                return Err("The provided states should all contain ModularPayoff types")
+            }
+        }
+        Ok(EndsOnContestWin { child, _phantom: std::marker::PhantomData })
     }
-    pub fn probas(&self, strategies: &S) -> Array<f64, Ix2> {
+    pub fn probas(&self, strategies: &Strategies<A>) -> Array<f64, Ix2> {
         let mut probas = vec![1.; self.n()];
         let mut all_probas: Vec<f64> = Vec::with_capacity(self.n() * strategies.t());
         let actions_seq = strategies.actions();
@@ -170,7 +152,9 @@ where S: StrategyType + Clone,
             for i in 0..self.n() {
                 all_probas.push(probas[i]);
                 if t != strategies.t() - 1 {
-                    let payoff_func = state.belief(i);
+                    let payoff_func = CastableAs::<ModularPayoff<A>>::cast(
+                        state.belief(i)
+                    ).expect("Belief should be ModularPayoff, but found something else");
                     let (_, p) = payoff_func.prod_func.f(actions);
                     probas[i] *= 1. - payoff_func.csf.q(p.view()).iter().sum::<f64>();
                 }
@@ -183,51 +167,48 @@ where S: StrategyType + Clone,
     }
 }
 
-impl<S, T, C> StateIterator for EndsOnContestWin<S, T, C>
-where S: StrategyType + Clone,
-      S::Act: Clone,
-      T: State<PFunc = ModularPayoff<S::Act>> + MutatesOn<S::Act> + Clone,
-      C: Discounter + StateIterator<St = T> + Clone
+impl<A, C> StateIterator<A> for EndsOnContestWin<A, C>
+where A: ActionType + Clone,
+      C: Discounter + StateIterator<A> + Clone
 {
-    type St = <C as StateIterator>::St;
-    fn state0(&self) -> &Self::St {
+    fn state0(&self) -> &Box<dyn State<A>> {
         self.child.state0()
     }
 
-    fn advance_state(&self, state: &mut Self::St, actions: &S::Act) {
+    fn advance_state(&self, state: &mut Box<dyn State<A>>, actions: &A) {
         state.mutate_on(actions);
     }
 }
 
-impl<S, T, C> Aggregator<S> for EndsOnContestWin<S, T, C>
-where S: StrategyType + Clone,
-      S::Act: Clone,
-      T: State<PFunc = ModularPayoff<S::Act>> + MutatesOn<S::Act> + Clone,
-      C: Discounter + StateIterator<St = T> + Clone
+impl<A, C> Aggregator<A> for EndsOnContestWin<A, C>
+where A: ActionType + Clone + 'static,
+      C: Discounter + StateIterator<A> + Clone
 {
     fn n(&self) -> usize {
         self.child.n()
     }
-    fn u_i(&self, i: usize, strategies: &S) -> f64 {
+    fn u_i(&self, i: usize, strategies: &Strategies<A>) -> f64 {
         let actions_seq = strategies.actions();
-        let mut state = self.child.state0().clone();
+        let state = &mut self.state0().clone();
         let gamma = self.child.gammas()[i];
         let mut proba = 1.;  // probability that nobody has won yet
         let mut u = 0.;
         for (t, actions) in actions_seq.iter().enumerate() {
-            let payoff_func = state.belief(i);
+            let payoff_func = CastableAs::<ModularPayoff<A>>::cast(
+                state.belief(i)
+            ).expect("Belief should be ModularPayoff, but found something else");
             u += proba * gamma.powi(t.try_into().unwrap()) * payoff_func.u_i(i, actions);
             if t != strategies.t() - 1 {
                 // update proba
                 let (_, p) = payoff_func.prod_func.f(actions);
                 proba *= 1. - payoff_func.csf.q(p.view()).iter().sum::<f64>();
                 // update state
-                self.advance_state(&mut state, actions);
+                self.advance_state(state, actions);
             }
         }
         u
     }
-    fn u(&self, strategies: &S) -> Array<f64, Ix1> {
+    fn u(&self, strategies: &Strategies<A>) -> Array<f64, Ix1> {
         let actions_seq = strategies.actions();
         let state = &mut self.state0().clone();
         let gammas = self.child.gammas();
@@ -235,7 +216,9 @@ where S: StrategyType + Clone,
         let mut u: Array<f64, Ix1> = Array::zeros(gammas.len());
         for (t, actions) in actions_seq.iter().enumerate() {
             u.iter_mut().zip(gammas.iter()).enumerate().for_each(|(i, (u_i, gamma))| {
-                let payoff_func = state.belief(i);
+                let payoff_func = CastableAs::<ModularPayoff<A>>::cast(
+                    state.belief(i)
+                ).expect("Belief should be ModularPayoff, but found something else");
                 // update u
                 *u_i += probas[i] * gamma.powi(t.try_into().unwrap()) * payoff_func.u_i(i, actions);
                 if t != strategies.t() - 1 {
@@ -254,5 +237,5 @@ where S: StrategyType + Clone,
 }
 
 
-pub type ExponentialDiscounter<T> = FixedStateDiscounter<Strategies<Actions>, T>;
-pub type InvestExpDiscounter<T> = DynStateDiscounter<Strategies<InvestActions>, T>;
+pub type ExponentialDiscounter = FixedStateDiscounter<Actions>;
+pub type InvestExpDiscounter = DynStateDiscounter<InvestActions>;

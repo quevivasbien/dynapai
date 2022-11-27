@@ -10,7 +10,9 @@ pub mod reward_func;
 pub mod risk_func;
 pub mod state;
 pub mod strategies;
+
 pub mod pybindings;
+pub mod utils;
 
 pub mod prelude;
 
