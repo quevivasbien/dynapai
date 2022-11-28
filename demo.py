@@ -36,7 +36,7 @@ print(f'payoffFunc = {payoffFunc}')
 payoff = payoffFunc(actions)
 print(f'payoff of actions = {payoff}')
 
-investPayoffFunc = dp.InvestPayoffFunc(
+investPayoffFunc = dp.PayoffFunc(
     prod_func = prodFunc,
     theta = np.array([0.5, 0.5]),
     d = np.array([1., 1.]),
@@ -55,3 +55,17 @@ agg = dp.Aggregator(
 )
 
 print(f'multi-period payoff = {agg.u([actions, actions])}')
+
+sol = agg.solve(init = 2);
+print(f'solution:', '\n'.join(str(x) for x in sol), sep = '\n')
+
+invest_agg = dp.Aggregator(
+    state = investPayoffFunc,
+    gammas = np.array([0.95, 0.9]),
+    end_on_win = True,
+)
+
+print(f'multi-period invest payoff = {invest_agg.u([investActions, investActions])}')
+
+invest_sol = invest_agg.solve(init = 2);
+print(f'invest solution:', '\n'.join(str(x) for x in invest_sol), sep = '\n')

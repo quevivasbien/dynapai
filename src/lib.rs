@@ -26,7 +26,8 @@ fn dynapai(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<py::PyInvestActions>()?;
     m.add_class::<py::PyProdFunc>()?;
     m.add_class::<py::PyPayoffFunc>()?;
-    m.add_class::<py::PyInvestPayoffFunc>()?;
+    m.add_class::<py::PyState>()?;
+    m.add_class::<py::PySolverOptions>()?;
     m.add_class::<py::PyAggregator>()?;
     Ok(())
 }

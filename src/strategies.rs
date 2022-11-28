@@ -76,6 +76,7 @@ impl<A: ActionType> Strategies<A> {
     pub fn n(&self) -> usize { self.actions()[0].n() }
     
     pub fn actions(&self) -> &Vec<A> { &self.0 }
+    pub fn into_actions(self) -> Vec<A> { self.0 }
     pub fn actions_mut(&mut self) -> &mut Vec<A> { &mut self.0 }
     pub fn data(&self) -> Array<f64, Ix3> {
         Array::from_shape_vec(

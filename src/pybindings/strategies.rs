@@ -1,8 +1,10 @@
 use crate::py::*;
+use crate::pycontainer;
 
 #[derive(Clone)]
 #[pyclass(name = "Actions")]
 pub struct PyActions(pub Actions);
+pycontainer!(PyActions(Actions));
 
 #[pymethods]
 impl PyActions {
@@ -41,6 +43,7 @@ impl PyActions {
 #[derive(Clone)]
 #[pyclass(name = "InvestActions")]
 pub struct PyInvestActions(pub InvestActions);
+pycontainer!(PyInvestActions(InvestActions));
 
 #[pymethods]
 impl PyInvestActions {
