@@ -1,22 +1,34 @@
 pub use pyo3::prelude::*;
-pub use numpy::{PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2, IntoPyArray};
-pub use numpy::ndarray::{stack, Axis};
+pub use numpy::{PyArray1, PyArray2, PyReadonlyArray2, IntoPyArray};
+pub use numpy::ndarray::{stack, Array, Axis};
 
 pub use crate::prelude::*;
 
 pub mod aggregator;
 pub mod payoff_func;
 pub mod prod_func;
+pub mod state;
 pub mod strategies;
 
 pub use aggregator::*;
 pub use payoff_func::*;
 pub use prod_func::*;
+pub use state::*;
 pub use strategies::*;
 
 #[macro_export]
-#[allow(unused_parens)]
 macro_rules! unpack_py {
+    // this second branch is only needed so linter doesn't complain about unused parens
+    { $input:expr => $output:ident [ $typ:ty ]; $exec:expr } => {
+        if let Ok($output) = $input.extract::<$typ>() {
+            $exec
+        }
+        else {
+            panic!("Invalid input type; expected: {}",
+                std::any::type_name::<$typ>()
+            );
+        }
+    };
     { $input:expr => $output:ident [ $($typ:ty)|+ ]; $exec:expr } => {
         $(if let Ok($output) = $input.extract::<$typ>() {
             $exec
@@ -26,7 +38,7 @@ macro_rules! unpack_py {
                 std::any::type_name::<($($typ),+)>()
             );
         }
-    }
+    };
 }
 
 #[macro_export]

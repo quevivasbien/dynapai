@@ -14,8 +14,8 @@ impl PyActions {
     }
 
     #[staticmethod]
-    fn from_inputs(xs: PyReadonlyArray1<f64>, xp: PyReadonlyArray1<f64>) -> Self {
-        let data = stack![Axis(1), xs.as_array(), xp.as_array()];
+    fn from_inputs(xs: Vec<f64>, xp: Vec<f64>) -> Self {
+        let data = stack![Axis(1), Array::from(xs), Array::from(xp)];
         Self(Actions::from_array(data))
     }
 
@@ -54,10 +54,10 @@ impl PyInvestActions {
 
     #[staticmethod]
     fn from_inputs(
-        xs: PyReadonlyArray1<f64>, xp: PyReadonlyArray1<f64>,
-        inv_s: PyReadonlyArray1<f64>, inv_p: PyReadonlyArray1<f64>
+        xs: Vec<f64>, xp: Vec<f64>,
+        inv_s: Vec<f64>, inv_p: Vec<f64>
     ) -> Self {
-        let data = stack![Axis(1), xs.as_array(), xp.as_array(), inv_s.as_array(), inv_p.as_array()];
+        let data = stack![Axis(1), Array::from(xs), Array::from(xp), Array::from(inv_s), Array::from(inv_p)];
         Self(InvestActions::from_array(data))
     }
 

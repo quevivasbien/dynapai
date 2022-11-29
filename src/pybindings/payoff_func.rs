@@ -19,21 +19,21 @@ impl PyPayoffFunc {
     #[args(r_inv = "None")]
     fn new(
         prod_func: PyProdFunc,
-        theta: PyReadonlyArray1<f64>,
-        d: PyReadonlyArray1<f64>,
-        r: PyReadonlyArray1<f64>,
-        r_inv: Option<PyReadonlyArray1<f64>>,
+        theta: Vec<f64>,
+        d: Vec<f64>,
+        r: Vec<f64>,
+        r_inv: Option<Vec<f64>>,
     ) -> Self {
         let n = ProdFunc::<Actions>::n(&prod_func.0);
         let prod_func = Box::new(prod_func.0);
-        let risk_func = Box::new(WinnerOnlyRisk { theta: theta.as_array().to_owned() });
+        let risk_func = Box::new(WinnerOnlyRisk { theta: Array::from(theta) });
         let csf = Box::new(DefaultCSF);
         let reward_func = Box::new(LinearReward::default(n));
-        let disaster_cost = Box::new(ConstantDisasterCost { d: d.as_array().to_owned() });
+        let disaster_cost = Box::new(ConstantDisasterCost { d: Array::from(d) });
         if let Some(r_inv) = r_inv {
             let cost_func = Box::new(FixedInvestCost::new(
-                r.as_array().to_owned(),
-                r_inv.as_array().to_owned(),
+                Array::from(r),
+                Array::from(r_inv),
             ));
             Self(PayoffFuncContainer::Invest(ModularPayoff::new(
                 prod_func,
@@ -44,7 +44,7 @@ impl PyPayoffFunc {
                 cost_func,
             ).expect("invalid payoff function parameters")))
         } else {
-            let cost_func = Box::new(FixedUnitCost { r: r.as_array().to_owned() });
+            let cost_func = Box::new(FixedUnitCost { r: Array::from(r) });
             Self(PayoffFuncContainer::Basic(ModularPayoff::new(
                 prod_func,
                 risk_func,

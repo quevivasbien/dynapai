@@ -4,35 +4,6 @@ use crate::unpack_py_on_strategies;
 
 use crate::py::*;
 
-#[derive(Clone)]
-pub enum StateContainer {
-    Basic(Box<dyn State<Actions>>),
-    Invest(Box<dyn State<InvestActions>>),
-}
-
-#[derive(Clone)]
-#[pyclass(name = "State")]
-pub struct PyState(pub StateContainer);
-
-fn as_state(x: &PyAny) -> PyState {
-    if let Ok(y) = x.extract::<PyState>() {
-        y
-    }
-    else if let Ok(y) = x.extract::<PyPayoffFunc>() {
-        match y.0 {
-            PayoffFuncContainer::Basic(z) => PyState(StateContainer::Basic(
-                Box::new(CommonBeliefs(Box::new(z)))
-            )),
-            PayoffFuncContainer::Invest(z) => PyState(StateContainer::Invest(
-                Box::new(CommonBeliefs(Box::new(z)))
-            )),
-        }
-    }
-    else {
-        panic!("Expected State or PayoffFunc, got something else");
-    }
-}
-
 
 #[pyclass(name = "SolverOptions")]
 pub struct PySolverOptions {
@@ -121,10 +92,10 @@ pub struct PyAggregator(pub AggregatorContainer);
 impl PyAggregator {
     #[new]
     #[args(end_on_win = "false")]
-    fn new(state: &PyAny, gammas: PyReadonlyArray1<f64>, end_on_win: bool) -> Self {
-        match as_state(state) {
-            PyState(StateContainer::Basic(state)) => {
-                let discounter = match ExponentialDiscounter::new(state, gammas.as_array().to_owned()) {
+    fn new(state: &PyAny, gammas: Vec<f64>, end_on_win: bool) -> Self {
+        match as_state(state).unpack() {
+            StateContainer::Basic(state) => {
+                let discounter = match ExponentialDiscounter::new(state, Array::from(gammas)) {
                     Ok(discounter) => discounter,
                     Err(e) => panic!("Error when constructing aggregator: {}", e),
                 };
@@ -137,8 +108,8 @@ impl PyAggregator {
                     }
                 ))
             },
-            PyState(StateContainer::Invest(state)) => {
-                let discounter = match InvestExpDiscounter::new(state, gammas.as_array().to_owned()) {
+            StateContainer::Invest(state) => {
+                let discounter = match InvestExpDiscounter::new(state, Array::from(gammas)) {
                     Ok(discounter) => discounter,
                     Err(e) => panic!("Error when constructing aggregator: {}", e),
                 };

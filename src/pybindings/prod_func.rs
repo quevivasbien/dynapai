@@ -10,14 +10,14 @@ pub struct PyProdFunc(pub DefaultProd);
 impl PyProdFunc {
     #[new]
     fn new(
-        a: PyReadonlyArray1<f64>, alpha: PyReadonlyArray1<f64>,
-        b: PyReadonlyArray1<f64>, beta: PyReadonlyArray1<f64>
+        a: Vec<f64>, alpha: Vec<f64>,
+        b: Vec<f64>, beta: Vec<f64>
     ) -> Self {
         Self(DefaultProd::new(
-            a.as_array().to_owned(),
-            alpha.as_array().to_owned(),
-            b.as_array().to_owned(),
-            beta.as_array().to_owned(),
+            Array::from(a),
+            Array::from(alpha),
+            Array::from(b),
+            Array::from(beta),
         ).expect("invalid production function parameters"))
     }
 
