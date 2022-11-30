@@ -1,18 +1,25 @@
 pub use pyo3::prelude::*;
+pub use pyo3::types::PyList;
 pub use numpy::{PyArray1, PyArray2, PyReadonlyArray2, IntoPyArray};
-pub use numpy::ndarray::{stack, Array, Axis};
+pub use numpy::ndarray::{stack, Array, Array1, Axis};
 
 pub use crate::prelude::*;
 
 pub mod aggregator;
+pub mod csf;
 pub mod payoff_func;
 pub mod prod_func;
+pub mod reward_func;
+pub mod risk_func;
 pub mod state;
 pub mod strategies;
 
 pub use aggregator::*;
+pub use csf::*;
 pub use payoff_func::*;
 pub use prod_func::*;
+pub use reward_func::*;
+pub use risk_func::*;
 pub use state::*;
 pub use strategies::*;
 
@@ -99,6 +106,7 @@ trait PyContainer {
     fn get(&self) -> &Self::Item;
 }
 
+// impl PyContainer for tuple struct of form Name(Contains)
 #[macro_export]
 macro_rules! pycontainer {
     { $name:ident($contains:ty) } => {
@@ -111,5 +119,22 @@ macro_rules! pycontainer {
                 &self.0
             }
         }
-    }
+    };
+    { $name:ident($field:ident : $contains:ty) } => {
+        impl PyContainer for $name {
+            type Item = $contains;
+            fn unpack(self) -> Self::Item {
+                self.$field
+            }
+            fn get(&self) -> &Self::Item {
+                &self.$field
+            }
+        }
+    };
+}
+
+fn value_error<S>(msg: S) -> PyErr
+where S: Into<String> + std::marker::Send + std::marker::Sync + pyo3::IntoPy<pyo3::Py<pyo3::PyAny>> + 'static
+{
+    pyo3::exceptions::PyValueError::new_err(msg).into()
 }

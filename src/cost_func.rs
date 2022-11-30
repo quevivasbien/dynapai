@@ -49,13 +49,15 @@ pub struct FixedInvestCost {
 }
 
 impl FixedInvestCost {
-    pub fn new(r_x: Array<f64, Ix1>, r_inv: Array<f64, Ix1>) -> FixedInvestCost {
-        assert_eq!(r_x.len(), r_inv.len());
-        FixedInvestCost {
+    pub fn new(r_x: Array<f64, Ix1>, r_inv: Array<f64, Ix1>) -> Result<FixedInvestCost, &'static str> {
+        if r_x.len() != r_inv.len() {
+            return Err("r_x and r_inv must have the same length");
+        }
+        Ok(FixedInvestCost {
             n: r_x.len(),
             r_x,
             r_inv,
-        }
+        })
     }
     pub fn from_elems(n: usize, r_x: f64, r_inv: f64) -> FixedInvestCost {
         FixedInvestCost {

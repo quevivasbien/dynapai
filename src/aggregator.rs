@@ -237,3 +237,10 @@ impl<A: ActionType, T: Aggregator<A> + StateIterator<A>> IteratingAggregator<A> 
 
 pub type ExponentialDiscounter = FixedStateDiscounter<Actions>;
 pub type InvestExpDiscounter = DynStateDiscounter<InvestActions>;
+
+
+#[derive(Clone)]
+pub struct SolverResult<A: ActionType> {
+    pub status: String,
+    pub strategies: Option<Strategies<A>>,
+}

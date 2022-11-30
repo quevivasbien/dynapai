@@ -22,12 +22,18 @@ pub use pybindings as py;
 /// A Python module implemented in Rust.
 #[pymodule]
 fn dynapai(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_class::<py::PyAggregator>()?;
     m.add_class::<py::PyActions>()?;
     m.add_class::<py::PyInvestActions>()?;
+    m.add_class::<py::PyCSF>()?;
     m.add_class::<py::PyProdFunc>()?;
     m.add_class::<py::PyPayoffFunc>()?;
+    m.add_class::<py::PyRewardFunc>()?;
+    m.add_class::<py::PyRiskFunc>()?;
+    m.add_class::<py::PyScenario>()?;
     m.add_class::<py::PyState>()?;
     m.add_class::<py::PySolverOptions>()?;
-    m.add_class::<py::PyAggregator>()?;
+    m.add_class::<py::PySolverResult>()?;
+    m.add_class::<py::PyStrategies>()?;
     Ok(())
 }

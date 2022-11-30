@@ -1,4 +1,4 @@
-use crate::py::*;
+use crate::{py::*, pycontainer};
 
 #[derive(Clone)]
 pub enum StateContainer {
@@ -12,16 +12,7 @@ pub struct PyState {
     pub state: StateContainer,
     pub class: &'static str,
 }
-
-impl PyContainer for PyState {
-    type Item = StateContainer;
-    fn get(&self) -> &Self::Item {
-        &self.state
-    }
-    fn unpack(self) -> Self::Item {
-        self.state
-    }
-}
+pycontainer!(PyState(state: StateContainer));
 
 #[pymethods]
 impl PyState {
@@ -80,6 +71,10 @@ impl PyState {
             state: state_container,
             class: "HetBeliefs",
         }
+    }
+
+    fn __str__(&self) -> String {
+        format!("State ({})", self.class)
     }
 }
 

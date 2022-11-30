@@ -1,5 +1,5 @@
-use pyo3::exceptions::PyException;
-use pyo3::types::PyList;
+use rayon::prelude::*;
+use crate::pycontainer;
 use crate::unpack_py_on_strategies;
 
 use crate::py::*;
@@ -73,10 +73,83 @@ where A: ActionType, P: PyContainer<Item = A> + FromPyObject<'a>
         }
         Err(_) => match init.extract::<usize>() {
             Ok(n) => Ok(InitGuess::Random(n)),
-            Err(_) => Err(PyException::new_err("init must be either a list of actions or a positive integer; maybe you provided the wrong type of actions?"))
+            Err(_) => Err(value_error(
+                "init must be either a list of actions or a positive integer; maybe you provided the wrong type of actions?"
+            ))
         }
     }
 }
+
+
+#[derive(Clone)]
+#[pyclass(name = "SolverResult")]
+pub struct PySolverResult {
+    pub status: String,
+    pub strategies: Option<PyStrategies>,
+}
+pycontainer!(PySolverResult(strategies: Option<PyStrategies>));
+
+#[pymethods]
+impl PySolverResult {
+    #[new]
+    pub fn new(status: String, strategies: Option<PyStrategies>) -> Self {
+        Self{ status, strategies }
+    }
+
+    pub fn optimum<'py>(&self, py: Python) -> PyResult<Py<PyAny>> {
+        match self.get() {
+            Some(s) => Ok(match s.clone().unpack() {
+                StrategiesContainer::Basic(s) => s.into_py(py),
+                StrategiesContainer::Invest(s) => s.into_py(py),
+            }),
+            None => Err(value_error(format!("no optimum found, status was {}", self.status)))
+        }
+    }
+
+    pub fn __str__(&self) -> String {
+        let s_string = match self.get() {
+            Some(s) => s.__str__(),
+            None => "None".to_string()
+        };
+        format!("SolverResult:\nstatus = {}\nstrategies = {}", self.status, s_string)
+    }
+}
+
+macro_rules! maybe_options {
+    ($init:ident : $init_ty:ty, $pyoptions:ident) => {
+        {
+            let init_guess = match extract_init::<_, $init_ty>($init) {
+                Ok(init) => init,
+                Err(e) => return PySolverResult::new(format!("Error when processing init: {}", e), None)
+            };
+            expand_options(init_guess, $pyoptions)
+        }
+    };
+    ($init:ident : vec[$n:expr] $init_ty:ty, $pyoptions:ident) => {
+        {
+            let init_guess = match extract_init::<_, $init_ty>($init) {
+                Ok(init) => init,
+                Err(e) => return vec![PySolverResult::new(format!("Error when processing init: {}", e), None); $n]
+            };
+            expand_options(init_guess, $pyoptions)
+        }
+    }
+}
+
+macro_rules! solve_with {
+    ($aggregator:expr, $options:expr, $unpacker:ident) => {
+        {
+            match solve($aggregator, $options) {
+                Ok(strategies) => PySolverResult::new(
+                    "success".to_string(),
+                    Some(PyStrategies::$unpacker(strategies)),
+                ),
+                Err(e) => PySolverResult::new(format!("Error when solving: {}", e), None),
+            }
+        }
+    }
+}
+
 
 #[derive(Clone)]
 pub enum AggregatorContainer {
@@ -87,6 +160,7 @@ pub enum AggregatorContainer {
 #[derive(Clone)]
 #[pyclass(name = "Aggregator")]
 pub struct PyAggregator(pub AggregatorContainer);
+pycontainer!(PyAggregator(AggregatorContainer));
 
 #[pymethods]
 impl PyAggregator {
@@ -142,31 +216,77 @@ impl PyAggregator {
     }
 
     #[args(options = "&DEFAULT_OPTIONS")]
-    fn solve<'py>(&self, py: Python<'py>, init: &PyAny, options: &PySolverOptions) -> PyResult<&'py PyList> {
+    fn solve(&self, init: &PyAny, options: &PySolverOptions) -> PySolverResult {
         match &self.0 {
-            AggregatorContainer::Basic(aggregator) => {
-                let init_guess = extract_init::<_, PyActions>(init)?;
-                let options = expand_options(init_guess, options);
-                let res = solve(aggregator.as_ref(), &options);
-                match res {
-                    Ok(strategies) => Ok(PyList::new(
-                        py,
-                        strategies.into_actions().into_iter().map(|x| PyActions(x).into_py(py))
-                    )),
-                    Err(e) => Err(PyException::new_err(format!("Error when solving: {}", e)))
-                }
+            AggregatorContainer::Basic(aggregator)
+                => solve_with!(aggregator.as_ref(), &maybe_options!(init: PyActions, options), from_basic),
+            AggregatorContainer::Invest(aggregator)
+                => solve_with!(aggregator.as_ref(), &maybe_options!(init: PyInvestActions, options), from_invest),
+        }
+    }
+}
+
+
+#[derive(Clone)]
+pub enum ScenarioContainer {
+    Basic(Vec<Box<dyn Aggregator<Actions>>>),
+    Invest(Vec<Box<dyn Aggregator<InvestActions>>>),
+}
+
+#[derive(Clone)]
+#[pyclass(name = "Scenario")]
+pub struct PyScenario(pub ScenarioContainer);
+pycontainer!(PyScenario(ScenarioContainer));
+
+#[pymethods]
+impl PyScenario {
+    #[new]
+    fn new(aggregators: Vec<PyAggregator>) -> PyResult<Self> {
+        if aggregators.iter().all(|a|
+            match a {
+                PyAggregator(AggregatorContainer::Basic(_)) => true,
+                PyAggregator(AggregatorContainer::Invest(_)) => false
+            }
+        ) {
+            Ok(Self(ScenarioContainer::Basic(
+                aggregators.into_iter().map(|a| match a.unpack() {
+                    AggregatorContainer::Basic(a) => a,
+                    _ => unreachable!()
+                }).collect()
+            )))
+        }
+        else if aggregators.iter().all(|a|
+            match a {
+                PyAggregator(AggregatorContainer::Basic(_)) => false,
+                PyAggregator(AggregatorContainer::Invest(_)) => true
+            }
+        ) {
+            Ok(Self(ScenarioContainer::Invest(
+                aggregators.into_iter().map(|a| match a.unpack() {
+                    AggregatorContainer::Invest(a) => a,
+                    _ => unreachable!()
+                }).collect()
+            )))
+        }
+        else {
+            Err(value_error("All aggregators must be of the same type"))
+        }
+    }
+
+    #[args(options = "&DEFAULT_OPTIONS")]
+    fn solve(&self, init: &PyAny, options: &PySolverOptions) -> Vec<PySolverResult> {
+        match &self.0 {
+            ScenarioContainer::Basic(scenario) => {
+                let options = maybe_options!(init: vec[scenario.len()] PyActions, options);
+                scenario.par_iter().map(|aggregator|
+                    solve_with!(aggregator.as_ref(), &options, from_basic)
+                ).collect()
             },
-            AggregatorContainer::Invest(aggregator) => {
-                let init_guess = extract_init::<_, PyInvestActions>(init)?;
-                let options = expand_options(init_guess, options);
-                let res = solve(aggregator.as_ref(), &options);
-                match res {
-                    Ok(strategies) => Ok(PyList::new(
-                        py,
-                        strategies.into_actions().into_iter().map(|x| PyInvestActions(x).into_py(py))
-                    )),
-                    Err(e) => Err(PyException::new_err(format!("Error when solving: {}", e)))
-                }
+            ScenarioContainer::Invest(scenario) => {
+                let options = maybe_options!(init: vec[scenario.len()] PyInvestActions, options);
+                scenario.par_iter().map(|aggregator|
+                    solve_with!(aggregator.as_ref(), &options, from_invest)
+                ).collect()
             }
         }
     }

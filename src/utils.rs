@@ -32,18 +32,15 @@ macro_rules! init_rep {
                     )*
                     out
                 }
-
-                fn expand(&self) -> Vec<$type> {
-                    let zipped = itertools::izip!($(&self.$field),*);
-                    zipped.map(|($($field),*)| {
-                        $type::new($($field.clone()),*).unwrap()
-                    }).collect()
-                }
             }
 
-            ParamReps::new(
+            let reps = ParamReps::new(
                 $($val),*
-            ).expand()
+            );
+            let zipped = itertools::izip!($(&reps.$field),*);
+            zipped.map(|($($field),*)| {
+                $type::new($($field.clone()),*).unwrap()
+            }).collect::<Vec<_>>()
         }
     };
 }

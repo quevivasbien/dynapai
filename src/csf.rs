@@ -41,8 +41,11 @@ impl CSF for DefaultCSF {
 pub struct MaybeNoWinCSF { scale: f64 }
 
 impl MaybeNoWinCSF {
-    pub fn new(scale: f64) -> Self {
-        Self { scale }
+    pub fn new(scale: f64) -> Result<Self, &'static str> {
+        if scale <= 0. {
+            return Err("scale must be positive");
+        }
+        Ok(Self { scale })
     }
     pub fn default() -> Self {
         Self { scale: 1.0 }

@@ -17,17 +17,6 @@ pub trait RiskFunc: DynClone + Downcast + Send + Sync {
 clone_trait_object!(RiskFunc);
 impl_downcast!(RiskFunc);
 
-impl RiskFunc for Box<dyn RiskFunc> {
-    fn sigma_i(&self, i: usize, s: ArrayView<f64, Ix1>, p: ArrayView<f64, Ix1>) -> f64 {
-        self.as_ref().sigma_i(i, s, p)
-    }
-    fn sigma(&self, s: ArrayView<f64, Ix1>, p: ArrayView<f64, Ix1>) -> Array<f64, Ix1> {
-        self.as_ref().sigma(s, p)
-    }
-    fn n(&self) -> usize {
-        self.as_ref().n()
-    }
-}
 
 pub trait RiskFuncWithTheta: RiskFunc {
     fn theta(&self) -> &Array<f64, Ix1>;
@@ -35,29 +24,6 @@ pub trait RiskFuncWithTheta: RiskFunc {
 
 clone_trait_object!(RiskFuncWithTheta);
 
-impl RiskFunc for Box<dyn RiskFuncWithTheta> {
-    fn sigma_i(&self, i: usize, s: ArrayView<f64, Ix1>, p: ArrayView<f64, Ix1>) -> f64 {
-        self.as_ref().sigma_i(i, s, p)
-    }
-    fn sigma(&self, s: ArrayView<f64, Ix1>, p: ArrayView<f64, Ix1>) -> Array<f64, Ix1> {
-        self.as_ref().sigma(s, p)
-    }
-    fn n(&self) -> usize {
-        self.as_ref().n()
-    }
-}
-
-impl RiskFuncWithTheta for Box<dyn RiskFuncWithTheta> {
-    fn theta(&self) -> &Array<f64, Ix1> {
-        self.as_ref().theta()
-    }
-}
-
-impl fmt::Display for dyn RiskFuncWithTheta {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "RiskFuncWithTheta: theta = {}", self.theta())
-    }
-}
 
 #[derive(Clone)]
 pub struct WinnerOnlyRisk {
@@ -65,10 +31,10 @@ pub struct WinnerOnlyRisk {
 }
 
 impl WinnerOnlyRisk {
-    pub fn new(n: usize, theta: f64) -> Self {
-        WinnerOnlyRisk {
+    pub fn new(n: usize, theta: f64) -> Result<Self, &'static str> {
+        Ok(WinnerOnlyRisk {
             theta: Array::from_elem(n, theta),
-        }
+        })
     }
 }
 
