@@ -65,15 +65,15 @@ fn make_invest(
 #[pymethods]
 impl PyPayoffFunc {
     #[new]
-    #[args(csf = "None", r_inv = "None")]
-    fn new(
+    #[args(csf = "None", reward_func = "None", r_inv = "None")]
+    pub fn new(
         prod_func: PyProdFunc,
         risk_func: PyRiskFunc,
-        csf: Option<PyCSF>,
-        reward_func: Option<PyRewardFunc>,
         d: Vec<f64>,
         r: Vec<f64>,
         r_inv: Option<Vec<f64>>,
+        csf: Option<PyCSF>,
+        reward_func: Option<PyRewardFunc>,
     ) -> PyResult<Self> {
         let n = ProdFunc::<Actions>::n(&prod_func.0);
         let prod_func = Box::new(prod_func.unpack());
@@ -117,11 +117,11 @@ impl PyPayoffFunc {
     pub fn expand_from(
         prod_func_list: Vec<PyProdFunc>,
         risk_func_list: Vec<PyRiskFunc>,
-        csf_list: Option<Vec<PyCSF>>,
-        reward_func_list: Option<Vec<PyRewardFunc>>,
         d_list: Vec<Vec<f64>>,
         r_list: Vec<Vec<f64>>,
         r_inv_list: Option<Vec<Vec<f64>>>,
+        csf_list: Option<Vec<PyCSF>>,
+        reward_func_list: Option<Vec<PyRewardFunc>>,
     ) -> Vec<PyPayoffFunc> {
         let csf_list = match csf_list {
             None => vec![None],
@@ -139,15 +139,15 @@ impl PyPayoffFunc {
         init_rep!(PyPayoffFunc =>
             prod_func = prod_func_list;
             risk_func = risk_func_list;
-            csf = csf_list;
-            reward_func = reward_func_list;
             d = d_list;
             r = r_list;
-            r_inv = r_inv_list
+            r_inv = r_inv_list;
+            csf = csf_list;
+            reward_func = reward_func_list
         )
     }
 
-    fn u_i(&self, i: usize, actions: &PyAny) -> f64 {
+    pub fn u_i(&self, i: usize, actions: &PyAny) -> f64 {
         unpack_py_on_actions! {
             &self.0 => pfunc: PayoffFuncContainer;
             actions => actions;
@@ -155,7 +155,7 @@ impl PyPayoffFunc {
         }
     }
 
-    fn u<'py>(&self, py: Python<'py>, actions: &PyAny) -> &'py PyArray1<f64> {
+    pub fn u<'py>(&self, py: Python<'py>, actions: &PyAny) -> &'py PyArray1<f64> {
         unpack_py_on_actions! {
             &self.0 => pfunc: PayoffFuncContainer;
             actions => actions;
@@ -163,7 +163,7 @@ impl PyPayoffFunc {
         }
     }
 
-    fn __call__<'py>(&self, py: Python<'py>, actions: &PyAny) -> &'py PyArray1<f64> {
+    pub fn __call__<'py>(&self, py: Python<'py>, actions: &PyAny) -> &'py PyArray1<f64> {
         self.u(py, actions)
     }
 }

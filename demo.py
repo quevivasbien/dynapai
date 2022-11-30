@@ -110,7 +110,7 @@ class Tester:
 
 
 def main():
-    parser = argparse.ArgumentParser(args=None if sys.argv[1:] else ['--help'])
+    parser = argparse.ArgumentParser()
     parser.add_argument('--n', type = int, default = 2, help = 'number of players in test scenarios')
     parser.add_argument('--t', type = int, default = 5, help = 'number of time steps in test scenarios')
     parser.add_argument('--basic', action = 'store_true', help = 'solve basic problem')
@@ -120,7 +120,7 @@ def main():
     parser.add_argument('--end-on-win', action = 'store_true', help = 'end game the first time someone wins')
     parser.add_argument('--plot', action = 'store_true', help = 'plot results')
 
-    args = parser.parse_args()
+    args = parser.parse_args(args=None if sys.argv[1:] else ['--help'])
     tester = Tester(args.n, args.t)
     if args.basic or args.all:
         tester.solve_basic(args.plot, args.end_on_win)
