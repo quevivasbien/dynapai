@@ -1,11 +1,17 @@
 from . import dynapai as dp
+import numpy as np
 import matplotlib.pyplot as plt
+
+from typing import Union, List
 
 ylabels = ["$x_s$", "$x_p$", "$i_s$", "$i_p$"]
 
-def plot(strategies, title = None, labels = None, logscale = True, figsize = None, show = True):
-    assert isinstance(strategies, dp.Strategies) or isinstance(strategies, dp.InvestStrategies)
-    data = strategies.data()
+# todo: make compatible with new strategies format
+def plot(
+    strategies: Union[List[dp.Actions], List[dp.InvestActions]],
+    title = None, labels = None, logscale = True, figsize = None, show = True
+):
+    data = np.stack([a.data() for a in strategies], axis = 0)
     labels = labels or [f"Player {i+1}" for i in range(data.shape[1])]
     n_axs = data.shape[2]
     figsize = figsize or (8, 2*n_axs)

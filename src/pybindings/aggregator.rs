@@ -1,6 +1,6 @@
 use rayon::prelude::*;
 use crate::pycontainer;
-use crate::unpack_py_on_strategies;
+use crate::{init_rep, unpack_py_on_strategies};
 
 use crate::py::*;
 
@@ -166,40 +166,60 @@ pycontainer!(PyAggregator(AggregatorContainer));
 impl PyAggregator {
     #[new]
     #[args(end_on_win = "false")]
-    fn new(state: &PyAny, gammas: Vec<f64>, end_on_win: bool) -> Self {
+    pub fn new(state: &PyAny, gammas: Vec<f64>, end_on_win: bool) -> PyResult<Self> {
         match as_state(state).unpack() {
             StateContainer::Basic(state) => {
                 let discounter = match ExponentialDiscounter::new(state, Array::from(gammas)) {
                     Ok(discounter) => discounter,
-                    Err(e) => panic!("Error when constructing aggregator: {}", e),
+                    Err(e) => return Err(value_error(format!("When constructing aggregator: {}", e))),
                 };
-                Self(AggregatorContainer::Basic(
+                Ok(Self(AggregatorContainer::Basic(
                     if end_on_win {
-                        Box::new(EndsOnContestWin::new(discounter).unwrap())
+                        match EndsOnContestWin::new(discounter) {
+                            Ok(aggregator) => Box::new(aggregator),
+                            Err(e) => return Err(value_error(format!("When constructing aggregator: {}", e))),
+                        }
                     }
                     else {
                         Box::new(discounter)
                     }
-                ))
+                )))
             },
             StateContainer::Invest(state) => {
                 let discounter = match InvestExpDiscounter::new(state, Array::from(gammas)) {
                     Ok(discounter) => discounter,
-                    Err(e) => panic!("Error when constructing aggregator: {}", e),
+                    Err(e) => return Err(value_error(format!("When constructing aggregator: {}", e))),
                 };
-                Self(AggregatorContainer::Invest(
+                Ok(Self(AggregatorContainer::Invest(
                     if end_on_win {
-                        Box::new(EndsOnContestWin::new(discounter).unwrap())
+                        match EndsOnContestWin::new(discounter) {
+                            Ok(aggregator) => Box::new(aggregator),
+                            Err(e) => return Err(value_error(format!("When constructing aggregator: {}", e))),
+                        }
                     }
                     else {
                         Box::new(discounter)
                     }
-                ))
+                )))
             }
         }
     }
 
-    fn u_i(&self, i: usize, strategies: &PyAny) -> f64 {
+    #[staticmethod]
+    #[args(end_on_win = "false")]
+    pub fn expand_from(
+        state_list: Vec<&PyAny>,
+        gammas_list: Vec<Vec<f64>>,
+        end_on_win: bool,
+    ) -> Vec<Self> {
+        init_rep!(Self =>
+            state = state_list;
+            gammas = gammas_list;
+            end_on_win = vec![end_on_win]
+        )
+    }
+
+    pub fn u_i(&self, i: usize, strategies: &PyAny) -> f64 {
         unpack_py_on_strategies! {
             &self.0 => aggregator: AggregatorContainer;
             strategies => strategies;
@@ -207,7 +227,7 @@ impl PyAggregator {
         }
     }
 
-    fn u<'py>(&self, py: Python<'py>, strategies: &PyAny) -> &'py PyArray1<f64> {
+    pub fn u<'py>(&self, py: Python<'py>, strategies: &PyAny) -> &'py PyArray1<f64> {
         unpack_py_on_strategies! {
             &self.0 => aggregator: AggregatorContainer;
             strategies => strategies;
@@ -216,7 +236,7 @@ impl PyAggregator {
     }
 
     #[args(options = "&DEFAULT_OPTIONS")]
-    fn solve(&self, init: &PyAny, options: &PySolverOptions) -> PySolverResult {
+    pub fn solve(&self, init: &PyAny, options: &PySolverOptions) -> PySolverResult {
         match &self.0 {
             AggregatorContainer::Basic(aggregator)
                 => solve_with!(aggregator.as_ref(), &maybe_options!(init: PyActions, options), from_basic),
@@ -241,7 +261,7 @@ pycontainer!(PyScenario(ScenarioContainer));
 #[pymethods]
 impl PyScenario {
     #[new]
-    fn new(aggregators: Vec<PyAggregator>) -> PyResult<Self> {
+    pub fn new(aggregators: Vec<PyAggregator>) -> PyResult<Self> {
         if aggregators.iter().all(|a|
             match a {
                 PyAggregator(AggregatorContainer::Basic(_)) => true,
@@ -274,7 +294,7 @@ impl PyScenario {
     }
 
     #[args(options = "&DEFAULT_OPTIONS")]
-    fn solve(&self, init: &PyAny, options: &PySolverOptions) -> Vec<PySolverResult> {
+    pub fn solve(&self, init: &PyAny, options: &PySolverOptions) -> Vec<PySolverResult> {
         match &self.0 {
             ScenarioContainer::Basic(scenario) => {
                 let options = maybe_options!(init: vec[scenario.len()] PyActions, options);

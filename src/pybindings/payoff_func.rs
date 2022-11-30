@@ -137,13 +137,13 @@ impl PyPayoffFunc {
         };
 
         init_rep!(PyPayoffFunc =>
-            prod_func: PyProdFunc = prod_func_list;
-            risk_func: PyRiskFunc = risk_func_list;
-            csf: Option<PyCSF> = csf_list;
-            reward_func: Option<PyRewardFunc> = reward_func_list;
-            d: Vec<f64> = d_list;
-            r: Vec<f64> = r_list;
-            r_inv: Option<Vec<f64>> = r_inv_list
+            prod_func = prod_func_list;
+            risk_func = risk_func_list;
+            csf = csf_list;
+            reward_func = reward_func_list;
+            d = d_list;
+            r = r_list;
+            r_inv = r_inv_list
         )
     }
 

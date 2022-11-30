@@ -1,6 +1,7 @@
 import argparse
 import numpy as np
 import dynapai as dp
+import sys
 
 from time import time
 
@@ -26,11 +27,12 @@ class Tester:
         time1 = time()
         print(f"Solved in {time1 - time0:.3f} seconds")
         print(f"Optimal {strat_type}:\n{res}")
-        print(f"Payoff from optimal {strat_type}: {agg.u(res.optimum())}")
+        optimum = res.optimum()
+        print(f"Payoff from optimal {strat_type}: {agg.u(optimum)}")
         print()
 
         if plot:
-            dp.plot(res, title = f"Optimal {strat_type}")
+            dp.plot(optimum, title = f"Optimal {strat_type}")
         return res
     
     def get_basic_agg(self, end_on_win = False):
@@ -49,11 +51,11 @@ class Tester:
             end_on_win = end_on_win,
         )
 
-    def solve_basic(self, plot = False):
-        agg = self.get_basic_agg()
+    def solve_basic(self, plot = False, end_on_win = False):
+        agg = self.get_basic_agg(end_on_win)
         return self.solve_agg(agg, plot = plot)
 
-    def get_invest_agg(self):
+    def get_invest_agg(self, end_on_win = False):
         payoffFunc = dp.PayoffFunc(
             prod_func = self.prodFunc,
             reward_func = dp.RewardFunc(self.n),
@@ -66,25 +68,13 @@ class Tester:
 
         return dp.Aggregator(
             state = payoffFunc,
-            gammas = self.gammas
+            gammas = self.gammas,
+            end_on_win = end_on_win,
         )
 
-    def solve_invest(self, plot = False):
-        agg = self.get_invest_agg()
+    def solve_invest(self, plot = False, end_on_win = False):
+        agg = self.get_invest_agg(end_on_win)
         return self.solve_agg(agg, strat_type = 'invest strategies', plot = plot)
-    
-    def solve_end_on_win(self, plot = False):
-        child = self.get_basic_agg(end_on_win = True)
-        agg = dp.Aggregator(child)
-        res = self.solve_agg(agg, strat_type = 'strategies (end-on-win)', plot = plot)
-        print("Players' beliefs about probabilities of reaching each t:", agg.probas(res), sep = '\n')
-        return res
-    
-    def solve_invest_end_on_win(self, plot = False):
-        agg = self.get_invest_agg(end_on_win = True)
-        res = self.solve_agg(agg, strat_type = 'invest strategies (end-on-win)', plot = plot)
-        print("Players' beliefs about probabilities of reaching each t:", agg.probas(res), sep = '\n')
-        return res
 
     def solve_scenario(self):
         # create two prod funcs with different values of theta
@@ -120,27 +110,22 @@ class Tester:
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(args=None if sys.argv[1:] else ['--help'])
     parser.add_argument('--n', type = int, default = 2, help = 'number of players in test scenarios')
     parser.add_argument('--t', type = int, default = 5, help = 'number of time steps in test scenarios')
     parser.add_argument('--basic', action = 'store_true', help = 'solve basic problem')
     parser.add_argument('--invest', action = 'store_true', help = 'solve problem with investment')
-    parser.add_argument('--end-on-win', action = 'store_true', help = 'solve basic problem with end-on-win condition')
-    parser.add_argument('--invest-end-on-win', action = 'store_true', help = 'solve problem with investment and end-on-win condition')
     parser.add_argument('--scenario', action = 'store_true', help = 'solve multiple invest problems in parallel')
     parser.add_argument('--all', action = 'store_true', help = 'run all tests')
+    parser.add_argument('--end-on-win', action = 'store_true', help = 'end game the first time someone wins')
     parser.add_argument('--plot', action = 'store_true', help = 'plot results')
 
     args = parser.parse_args()
     tester = Tester(args.n, args.t)
     if args.basic or args.all:
-        tester.solve_basic(args.plot)
+        tester.solve_basic(args.plot, args.end_on_win)
     if args.invest or args.all:
-        tester.solve_invest(args.plot)
-    if args.end_on_win or args.all:
-        tester.solve_end_on_win(args.plot)
-    if args.invest_end_on_win or args.all:
-        tester.solve_invest_end_on_win(args.plot)
+        tester.solve_invest(args.plot, args.end_on_win)
     if args.scenario or args.all:
         tester.solve_scenario()
 

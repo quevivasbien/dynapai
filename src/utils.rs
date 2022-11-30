@@ -13,31 +13,22 @@ where I: Iterator<Item = f64>, J: Iterator<Item = f64>
 // macro for creating vector of related structs
 #[macro_export]
 macro_rules! init_rep {
-    ($type:ident => $($field:ident: $fty:ty = $val:expr);* ) => {
+    ($type:ident => $($field:ident = $val:expr);* ) => {
         {
-            struct ParamReps {
-                $($field: Vec<$fty>),*
-            }
-            impl ParamReps {
-                fn new($($field: Vec<$fty>),*) -> Self {
-                    let mut out = ParamReps { $($field),* };
-                    let max_n = [$(out.$field.len()),*].iter().fold(0 as usize, |acc, l| {
-                        if *l > acc {*l} else {acc}
-                    });
-                    $(
-                        if out.$field.len() < max_n {
-                            let last = out.$field.last().unwrap().clone();
-                            out.$field.extend(std::iter::repeat(last).take(max_n - out.$field.len()));
-                        }
-                    )*
-                    out
-                }
-            }
-
-            let reps = ParamReps::new(
-                $($val),*
-            );
-            let zipped = itertools::izip!($(&reps.$field),*);
+            let max_n = [$( $val.len() ),*].iter().fold(0 as usize, |acc, l| {
+                if *l > acc {*l} else {acc}
+            });
+            let zipped = itertools::izip!($(
+                    if $val.len() < max_n {
+                        let mut val = $val.clone();
+                        let last = val.last().unwrap().clone();
+                        val.extend(std::iter::repeat(last).take(max_n - val.len()));
+                        val
+                    }
+                    else {
+                        $val
+                    }
+            ),*);
             zipped.map(|($($field),*)| {
                 $type::new($($field.clone()),*).unwrap()
             }).collect::<Vec<_>>()

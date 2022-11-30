@@ -28,14 +28,14 @@ impl PyProdFunc {
 
     #[staticmethod]
     fn expand_from(
-        a: Vec<Vec<f64>>, alpha: Vec<Vec<f64>>,
-        b: Vec<Vec<f64>>, beta: Vec<Vec<f64>>,
+        a_list: Vec<Vec<f64>>, alpha_list: Vec<Vec<f64>>,
+        b_list: Vec<Vec<f64>>, beta_list: Vec<Vec<f64>>,
     ) -> Vec<PyProdFunc> {
         init_rep!(PyProdFunc =>
-            a: Vec<f64> = a;
-            alpha: Vec<f64> = alpha;
-            b: Vec<f64> = b;
-            beta: Vec<f64> = beta
+            a = a_list;
+            alpha = alpha_list;
+            b = b_list;
+            beta = beta_list
         )
     }
 
