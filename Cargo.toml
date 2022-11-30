@@ -9,6 +9,12 @@ name = "dynapai"
 crate-type = ["cdylib"]
 
 [dependencies]
+argmin = "0.7.0"
+argmin-math = "0.2.1"
+downcast-rs = "1.2.0"
 dyn-clone = "1.0.9"
+itertools = "0.10.5"
+ndarray-rand = "0.14.0"
 numpy = "0.17.2"
 pyo3 = { version = "0.17.1", features = ["extension-module"] }
+rayon = "1.6.0"

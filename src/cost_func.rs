@@ -1,9 +1,10 @@
-use dyn_clone::DynClone;
+use downcast_rs::{Downcast, impl_downcast};
+use dyn_clone::{DynClone, clone_trait_object};
 use numpy::ndarray::{Array, Ix1};
 
 use crate::strategies::*;
 
-pub trait CostFunc<A: ActionType>: DynClone + Send + Sync {
+pub trait CostFunc<A: ActionType>: DynClone + Downcast + Send + Sync {
 
     fn c_i(&self, i: usize, actions: &A) -> f64;
     fn c(&self, actions: &A) -> Array<f64, Ix1> {
@@ -13,18 +14,8 @@ pub trait CostFunc<A: ActionType>: DynClone + Send + Sync {
     fn n(&self) -> usize;
 }
 
-impl<A: ActionType> CostFunc<A> for Box<dyn CostFunc<A>> {
-    fn c_i(&self, i: usize, actions: &A) -> f64 { self.as_ref().c_i(i, actions) }
-    fn c(&self, actions: &A) -> Array<f64, Ix1> { self.as_ref().c(actions) }
-    fn n(&self) -> usize { self.as_ref().n() }
-}
-
-// long form of clone_trait_object!(CostFunc<A>):
-impl<A: ActionType> Clone for Box<dyn CostFunc<A>> {
-    fn clone(&self) -> Self {
-        dyn_clone::clone_box(&**self)
-    }
-}
+clone_trait_object!(<A> CostFunc<A> where A: ActionType);
+impl_downcast!(CostFunc<A> where A: ActionType);
 
 #[derive(Clone, Debug)]
 pub struct FixedUnitCost {
@@ -58,13 +49,15 @@ pub struct FixedInvestCost {
 }
 
 impl FixedInvestCost {
-    pub fn new(r_x: Array<f64, Ix1>, r_inv: Array<f64, Ix1>) -> FixedInvestCost {
-        assert_eq!(r_x.len(), r_inv.len());
-        FixedInvestCost {
+    pub fn new(r_x: Array<f64, Ix1>, r_inv: Array<f64, Ix1>) -> Result<FixedInvestCost, &'static str> {
+        if r_x.len() != r_inv.len() {
+            return Err("r_x and r_inv must have the same length");
+        }
+        Ok(FixedInvestCost {
             n: r_x.len(),
             r_x,
             r_inv,
-        }
+        })
     }
     pub fn from_elems(n: usize, r_x: f64, r_inv: f64) -> FixedInvestCost {
         FixedInvestCost {

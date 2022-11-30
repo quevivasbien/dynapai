@@ -1,8 +1,9 @@
+use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::{DynClone, clone_trait_object};
 use numpy::ndarray::{Array, ArrayView, Ix1};
 use std::fmt;
 
-pub trait RewardFunc: DynClone + Send + Sync {
+pub trait RewardFunc: DynClone + Downcast + Send + Sync {
     fn win_i(&self, i: usize, p: ArrayView<f64, Ix1>) -> f64;
     fn lose_i(&self, i: usize, p: ArrayView<f64, Ix1>) -> f64;
     fn reward(&self, i: usize, p: ArrayView<f64, Ix1>) -> Array<f64, Ix1> {
@@ -19,21 +20,8 @@ pub trait RewardFunc: DynClone + Send + Sync {
 }
 
 clone_trait_object!(RewardFunc);
+impl_downcast!(RewardFunc);
 
-impl RewardFunc for Box<dyn RewardFunc> {
-    fn win_i(&self, i: usize, p: ArrayView<f64, Ix1>) -> f64 {
-        self.as_ref().win_i(i, p)
-    }
-    fn lose_i(&self, i: usize, p: ArrayView<f64, Ix1>) -> f64 {
-        self.as_ref().lose_i(i, p)
-    }
-    fn reward(&self, i: usize, p: ArrayView<f64, Ix1>) -> Array<f64, Ix1> {
-        self.as_ref().reward(i, p)
-    }
-    fn n(&self) -> usize {
-        self.as_ref().n()
-    }
-}
 
 #[derive(Clone)]
 pub struct LinearReward {

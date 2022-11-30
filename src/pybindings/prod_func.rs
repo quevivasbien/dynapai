@@ -1,25 +1,42 @@
-use crate::prod_func::*;
+use crate::{py::*, pycontainer};
+use crate::{unpack_py, init_rep};
 
-use crate::py::*;
-use crate::unpack_py;
 
 #[derive(Clone)]
 #[pyclass(name = "ProdFunc")]
 pub struct PyProdFunc(pub DefaultProd);
+pycontainer!(PyProdFunc(DefaultProd));
 
 #[pymethods]
 impl PyProdFunc {
     #[new]
     fn new(
-        a: PyReadonlyArray1<f64>, alpha: PyReadonlyArray1<f64>,
-        b: PyReadonlyArray1<f64>, beta: PyReadonlyArray1<f64>
-    ) -> Self {
-        Self(DefaultProd::new(
-            a.as_array().to_owned(),
-            alpha.as_array().to_owned(),
-            b.as_array().to_owned(),
-            beta.as_array().to_owned(),
-        ).expect("invalid production function parameters"))
+        a: Vec<f64>, alpha: Vec<f64>,
+        b: Vec<f64>, beta: Vec<f64>
+    ) -> PyResult<Self> {
+        let prod_func = DefaultProd::new(
+            Array::from(a),
+            Array::from(alpha),
+            Array::from(b),
+            Array::from(beta),
+        );
+        match prod_func {
+            Ok(p) => Ok(Self(p)),
+            Err(e) => Err(value_error(e)),
+        }
+    }
+
+    #[staticmethod]
+    fn expand_from(
+        a_list: Vec<Vec<f64>>, alpha_list: Vec<Vec<f64>>,
+        b_list: Vec<Vec<f64>>, beta_list: Vec<Vec<f64>>,
+    ) -> Vec<PyProdFunc> {
+        init_rep!(PyProdFunc =>
+            a = a_list;
+            alpha = alpha_list;
+            b = b_list;
+            beta = beta_list
+        )
     }
 
     fn f_i(&self, i: usize, actions: &PyAny) -> (f64, f64) {
