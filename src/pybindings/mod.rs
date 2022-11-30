@@ -6,6 +6,7 @@ pub use numpy::ndarray::{stack, Array, Array1, Axis};
 pub use crate::prelude::*;
 
 pub mod aggregator;
+pub mod cost_func;
 pub mod csf;
 pub mod payoff_func;
 pub mod prod_func;
@@ -15,6 +16,7 @@ pub mod state;
 pub mod strategies;
 
 pub use aggregator::*;
+pub use cost_func::*;
 pub use csf::*;
 pub use payoff_func::*;
 pub use prod_func::*;
@@ -49,8 +51,24 @@ macro_rules! unpack_py {
 }
 
 #[macro_export]
-macro_rules! unpack_py_on_actions {
-    { $input:expr => $output:ident : $enumname:ident; $actin:expr => $actout:ident; $exec:expr } => {
+macro_rules! unpack_py_enum {
+    ( $in:expr => $enumname:ident($name:ident); $exec:expr ) => {
+        match $in {
+            $enumname::Basic($name) => $exec,
+            $enumname::Invest($name) => $exec
+        }
+    };
+    ( $in:expr => $enumname:ident($name:ident); $exec:expr => $outenumname:ident ) => {
+        match $in {
+            $enumname::Basic($name) => $outenumname::Basic($exec),
+            $enumname::Invest($name) => $outenumname::Invest($exec)
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! unpack_py_enum_on_actions {
+    { $input:expr => $enumname:ident($output:ident); $actin:expr => $actout:ident; $exec:expr } => {
         match $input {
             $enumname::Basic($output) => {
                 crate::unpack_py! {
@@ -75,8 +93,8 @@ macro_rules! unpack_py_on_actions {
 }
 
 #[macro_export]
-macro_rules! unpack_py_on_strategies {
-    { $input:expr => $output:ident : $enumname:ident; $stratin:expr => $stratout:ident; $exec:expr } => {
+macro_rules! unpack_py_enum_on_strategies {
+    { $input:expr => $enumname:ident($output:ident); $stratin:expr => $stratout:ident; $exec:expr } => {
         match $input {
             $enumname::Basic($output) => {
                 crate::unpack_py! {

@@ -1,4 +1,4 @@
-# ai-dynamic-game
+# dynapai
 
 ## What is this?
 

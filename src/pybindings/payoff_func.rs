@@ -1,7 +1,8 @@
 use crate::init_rep;
 use crate::py::*;
 use crate::pycontainer;
-use crate::unpack_py_on_actions;
+use crate::unpack_py_enum;
+use crate::unpack_py_enum_on_actions;
 
 #[derive(Clone)]
 pub enum PayoffFuncContainer {
@@ -14,54 +15,6 @@ pub enum PayoffFuncContainer {
 pub struct PyPayoffFunc(pub PayoffFuncContainer);
 pycontainer!(PyPayoffFunc(PayoffFuncContainer));
 
-fn make_basic(
-    prod_func: Box<DefaultProd>,
-    risk_func: Box<dyn RiskFunc>,
-    csf: Box<dyn CSF>,
-    reward_func: Box<dyn RewardFunc>,
-    disaster_cost: Box<dyn DisasterCost>,
-    r: Vec<f64>,
-) -> Result<PayoffFuncContainer, &'static str> {
-    let cost_func = Box::new(
-        FixedUnitCost { r: Array::from(r) }
-    );
-    let pfunc = ModularPayoff::new(
-        prod_func,
-        risk_func,
-        csf,
-        reward_func,
-        disaster_cost,
-        cost_func,
-    )?;
-    Ok(PayoffFuncContainer::Basic(pfunc))
-}
-
-fn make_invest(
-    prod_func: Box<DefaultProd>,
-    risk_func: Box<dyn RiskFunc>,
-    csf: Box<dyn CSF>,
-    reward_func: Box<dyn RewardFunc>,
-    disaster_cost: Box<dyn DisasterCost>,
-    r: Vec<f64>,
-    r_inv: Vec<f64>,
-) -> Result<PayoffFuncContainer, &'static str> {
-    let cost_func = Box::new(
-        FixedInvestCost::new(
-            Array::from(r),
-            Array::from(r_inv),
-        )?
-    );
-    let pfunc = ModularPayoff::new(
-        prod_func,
-        risk_func,
-        csf,
-        reward_func,
-        disaster_cost,
-        cost_func,
-    )?;
-    Ok(PayoffFuncContainer::Basic(pfunc))
-}
-
 #[pymethods]
 impl PyPayoffFunc {
     #[new]
@@ -70,8 +23,7 @@ impl PyPayoffFunc {
         prod_func: PyProdFunc,
         risk_func: PyRiskFunc,
         d: Vec<f64>,
-        r: Vec<f64>,
-        r_inv: Option<Vec<f64>>,
+        cost_func: PyCostFunc,
         csf: Option<PyCSF>,
         reward_func: Option<PyRewardFunc>,
     ) -> PyResult<Self> {
@@ -87,30 +39,20 @@ impl PyPayoffFunc {
             Some(reward_func) => reward_func.unpack(),
         };
         let disaster_cost = Box::new(ConstantDisasterCost { d: Array::from(d) });
-        let pfunc = if let Some(r_inv) = r_inv {
-            make_invest(
+        Ok(Self(unpack_py_enum! {
+            cost_func.unpack() => CostFuncContainer(cost_func);
+            match ModularPayoff::new(
                 prod_func,
                 risk_func,
                 csf,
                 reward_func,
                 disaster_cost,
-                r,
-                r_inv,
-            )
-        } else {
-            make_basic(
-                prod_func,
-                risk_func,
-                csf,
-                reward_func,
-                disaster_cost,
-                r,
-            )
-        };
-        match pfunc {
-            Ok(pfunc) => Ok(PyPayoffFunc(pfunc)),
-            Err(e) => Err(value_error(e)),
-        }
+                cost_func,
+            ) {
+                Ok(pfunc) => pfunc,
+                Err(e) => return Err(value_error(e)),
+            } => PayoffFuncContainer
+        }))
     }
 
     #[staticmethod]
@@ -118,8 +60,7 @@ impl PyPayoffFunc {
         prod_func_list: Vec<PyProdFunc>,
         risk_func_list: Vec<PyRiskFunc>,
         d_list: Vec<Vec<f64>>,
-        r_list: Vec<Vec<f64>>,
-        r_inv_list: Option<Vec<Vec<f64>>>,
+        cost_func_list: Vec<PyCostFunc>,
         csf_list: Option<Vec<PyCSF>>,
         reward_func_list: Option<Vec<PyRewardFunc>>,
     ) -> Vec<PyPayoffFunc> {
@@ -131,33 +72,28 @@ impl PyPayoffFunc {
             None => vec![None],
             Some(reward_func_list) => reward_func_list.into_iter().map(|reward_func| Some(reward_func)).collect(),
         };
-        let r_inv_list = match r_inv_list {
-            None => vec![None],
-            Some(r_inv_list) => r_inv_list.into_iter().map(|r_inv| Some(r_inv)).collect(),
-        };
 
         init_rep!(PyPayoffFunc =>
             prod_func = prod_func_list;
             risk_func = risk_func_list;
             d = d_list;
-            r = r_list;
-            r_inv = r_inv_list;
+            cost_func = cost_func_list;
             csf = csf_list;
             reward_func = reward_func_list
         )
     }
 
     pub fn u_i(&self, i: usize, actions: &PyAny) -> f64 {
-        unpack_py_on_actions! {
-            &self.0 => pfunc: PayoffFuncContainer;
+        unpack_py_enum_on_actions! {
+            &self.0 => PayoffFuncContainer(pfunc);
             actions => actions;
             pfunc.u_i(i, &actions)
         }
     }
 
     pub fn u<'py>(&self, py: Python<'py>, actions: &PyAny) -> &'py PyArray1<f64> {
-        unpack_py_on_actions! {
-            &self.0 => pfunc: PayoffFuncContainer;
+        unpack_py_enum_on_actions! {
+            &self.0 => PayoffFuncContainer(pfunc);
             actions => actions;
             pfunc.u(&actions).into_pyarray(py)
         }

@@ -1,6 +1,6 @@
 use rayon::prelude::*;
 use crate::pycontainer;
-use crate::{init_rep, unpack_py_on_strategies};
+use crate::{init_rep, unpack_py_enum_on_strategies};
 
 use crate::py::*;
 
@@ -220,16 +220,16 @@ impl PyAggregator {
     }
 
     pub fn u_i(&self, i: usize, strategies: &PyAny) -> f64 {
-        unpack_py_on_strategies! {
-            &self.0 => aggregator: AggregatorContainer;
+        unpack_py_enum_on_strategies! {
+            &self.0 => AggregatorContainer(aggregator);
             strategies => strategies;
             aggregator.u_i(i, &strategies)
         }
     }
 
     pub fn u<'py>(&self, py: Python<'py>, strategies: &PyAny) -> &'py PyArray1<f64> {
-        unpack_py_on_strategies! {
-            &self.0 => aggregator: AggregatorContainer;
+        unpack_py_enum_on_strategies! {
+            &self.0 => AggregatorContainer(aggregator);
             strategies => strategies;
             aggregator.u(&strategies).into_pyarray(py)
         }

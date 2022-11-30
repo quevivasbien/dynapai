@@ -18,6 +18,7 @@ class Tester:
             b = np.full(n, 1.),
             beta = np.full(n, 0.5),
         )
+        self.rewardFunc = dp.RewardFunc(n)
         self.riskFunc = dp.RiskFunc.winner_only_risk(np.full(n, 0.5))
     
     def solve_agg(self, agg, strat_type = 'strategies', plot = False):
@@ -38,11 +39,11 @@ class Tester:
     def get_basic_agg(self, end_on_win = False):
         payoffFunc = dp.PayoffFunc(
             prod_func = self.prodFunc,
-            reward_func = dp.RewardFunc(self.n),
+            reward_func = self.rewardFunc,
             csf = dp.CSF.default(),
             risk_func = self.riskFunc,
             d = np.full(self.n, 1.),
-            r = np.full(self.n, 0.1),
+            cost_func = dp.CostFunc.fixed(np.full(self.n, 0.1)),
         )
 
         return dp.Aggregator(
@@ -58,12 +59,14 @@ class Tester:
     def get_invest_agg(self, end_on_win = False):
         payoffFunc = dp.PayoffFunc(
             prod_func = self.prodFunc,
-            reward_func = dp.RewardFunc(self.n),
+            reward_func = self.rewardFunc,
             csf = dp.CSF.maybe_no_win(),
             risk_func = self.riskFunc,
             d = np.full(self.n, 1.),
-            r = np.full(self.n, 0.1),
-            r_inv = np.full(self.n, 0.01),
+            cost_func = dp.CostFunc.fixed_invest(
+                np.full(self.n, 0.1),
+                np.full(self.n, 0.01),
+            ),
         )
 
         return dp.Aggregator(
@@ -85,10 +88,12 @@ class Tester:
                 dp.RiskFunc.winner_only_risk(np.full(self.n, 1.0))
             ],
             csf_list = [dp.CSF.maybe_no_win()],
-            reward_func_list = [dp.RewardFunc(self.n)],
+            reward_func_list = [self.rewardFunc],
             d_list = [np.full(self.n, 1.)],
-            r_list = [np.full(self.n, 0.1)],
-            r_inv_list = [np.full(self.n, 0.01)],
+            cost_func_list = [dp.CostFunc.fixed_invest(
+                np.full(self.n, 0.1),
+                np.full(self.n, 0.01),
+            )],
         )
 
         aggs = dp.Aggregator.expand_from(
