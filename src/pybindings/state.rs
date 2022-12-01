@@ -1,10 +1,8 @@
-use crate::{py::*, pycontainer};
+use crate::py::*;
+use crate::{def_py_enum, pycontainer};
 
-#[derive(Clone)]
-pub enum StateContainer {
-    Basic(Box<dyn State<Actions>>),
-    Invest(Box<dyn State<InvestActions>>),
-}
+
+def_py_enum!(StateContainer(Box<dyn State>));
 
 #[derive(Clone)]
 #[pyclass(name = "State")]
@@ -43,7 +41,7 @@ impl PyState {
         let state_container = if beliefs.iter().all(|b|
             match b.get() {
                 PayoffFuncContainer::Basic(_) => true,
-                PayoffFuncContainer::Invest(_) => false,
+                _ => false,
             }
         ) {
             let beliefs = beliefs.into_iter().map(|b| match b.unpack() {
@@ -54,8 +52,8 @@ impl PyState {
         }
         else if beliefs.iter().all(|b|
             match b.get() {
-                PayoffFuncContainer::Basic(_) => false,
                 PayoffFuncContainer::Invest(_) => true,
+                _ => false,
             }
         ) {
             let beliefs = beliefs.into_iter().map(|b| match b.unpack() {

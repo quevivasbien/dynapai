@@ -1,12 +1,8 @@
 use crate::py::*;
-use crate::{pycontainer, unpack_py_enum_on_actions};
+use crate::{def_py_enum, pycontainer, unpack_py_enum_on_actions};
 
 
-#[derive(Clone)]
-pub enum CostFuncContainer {
-    Basic(Box<dyn CostFunc<Actions>>),
-    Invest(Box<dyn CostFunc<InvestActions>>),
-}
+def_py_enum!(CostFuncContainer(Box<dyn CostFunc>));
 
 #[derive(Clone)]
 #[pyclass(name = "CostFunc")]
@@ -42,16 +38,16 @@ impl PyCostFunc {
 
     pub fn c_i(&self, i: usize, actions: &PyAny) -> f64 {
         unpack_py_enum_on_actions! {
-            &self.0 => CostFuncContainer(cfunc);
+            &self.0 => CostFuncContainer(cost_func);
             actions => actions;
-            cfunc.c_i(i, &actions)
+            cost_func.c_i(i, &actions)
         }
     }
     pub fn c<'py>(&self, py: Python<'py>, actions: &PyAny) -> &'py PyArray1<f64> {
         unpack_py_enum_on_actions! {
-            &self.0 => CostFuncContainer(cfunc);
+            &self.0 => CostFuncContainer(cost_func);
             actions => actions;
-            cfunc.c(&actions).into_pyarray(py)
+            cost_func.c(&actions).into_pyarray(py)
         }
     }
 }

@@ -1,5 +1,5 @@
 use rayon::prelude::*;
-use crate::pycontainer;
+use crate::{pycontainer, def_py_enum};
 use crate::{init_rep, unpack_py_enum_on_strategies};
 
 use crate::py::*;
@@ -150,12 +150,7 @@ macro_rules! solve_with {
     }
 }
 
-
-#[derive(Clone)]
-pub enum AggregatorContainer {
-    Basic(Box<dyn Aggregator<Actions>>),
-    Invest(Box<dyn Aggregator<InvestActions>>),
-}
+def_py_enum!(AggregatorContainer(Box<dyn Aggregator>));
 
 #[derive(Clone)]
 #[pyclass(name = "Aggregator")]

@@ -1,14 +1,9 @@
 use crate::init_rep;
 use crate::py::*;
 use crate::pycontainer;
-use crate::unpack_py_enum;
-use crate::unpack_py_enum_on_actions;
+use crate::{def_py_enum, unpack_py_enum, unpack_py_enum_on_actions};
 
-#[derive(Clone)]
-pub enum PayoffFuncContainer {
-    Basic(ModularPayoff<Actions>),
-    Invest(ModularPayoff<InvestActions>),
-}
+def_py_enum!(PayoffFuncContainer(ModularPayoff));
 
 #[derive(Clone)]
 #[pyclass(name = "PayoffFunc")]

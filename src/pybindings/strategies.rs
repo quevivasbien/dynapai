@@ -1,5 +1,6 @@
 use crate::py::*;
 use crate::pycontainer;
+use crate::unpack_py;
 
 #[derive(Clone)]
 #[pyclass(name = "Actions")]
@@ -119,13 +120,12 @@ impl PyStrategies {
 impl PyStrategies {
     #[new]
     pub fn new(actions_list: &PyAny) -> Self {
-        if let Ok(actions_vec) = actions_list.extract::<Vec<PyActions>>() {
-            Self(StrategiesContainer::Basic(actions_vec))
-        } else if let Ok(actions_vec) = actions_list.extract::<Vec<PyInvestActions>>() {
-            Self(StrategiesContainer::Invest(actions_vec))
-        } else {
-            panic!("Invalid actions type");
-        }
+        Self(
+            unpack_py! {
+                actions_list => actions_vec [Vec<PyActions> | Vec<PyInvestActions>];
+                actions_vec => StrategiesContainer
+            }
+        )
     }
 
     pub fn __str__(&self) -> String {

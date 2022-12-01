@@ -25,6 +25,9 @@ pub use risk_func::*;
 pub use state::*;
 pub use strategies::*;
 
+// this macro takes an input ($input) of type &PyAny
+// and attempts to downcast it to a variable of type $typ
+// before plugging it into the expression $exec.
 #[macro_export]
 macro_rules! unpack_py {
     // this second branch is only needed so linter doesn't complain about unused parens
@@ -48,8 +51,28 @@ macro_rules! unpack_py {
             );
         }
     };
+    // a special variant when we want to package the output in an enum
+    { $input:expr => $output:ident [ $basic_typ:ty | $invest_typ:ty ]; $exec:expr => $enumout:ident } => {
+        if let Ok($output) = $input.extract::<$basic_typ>() {
+            $enumout::Basic($exec)
+        }
+        else if let Ok($output) = $input.extract::<$invest_typ>() {
+            $enumout::Invest($exec)
+        }
+        else {
+            panic!("Invalid input type; expected one of: {}",
+                std::any::type_name::<($basic_typ, $invest_typ)>()
+            );
+        }
+    };
 }
 
+// This macro takes a container enum with Basic & Invest variants,
+// unpacks them into a variable $name,
+// and executes the given expression using that $name.
+// The idea of this and the following macros is to be able to implement
+// new action types and only have to change the macro definitions
+// instead of a bunch of code in the pybindings modules.
 #[macro_export]
 macro_rules! unpack_py_enum {
     ( $in:expr => $enumname:ident($name:ident); $exec:expr ) => {
@@ -63,30 +86,50 @@ macro_rules! unpack_py_enum {
             $enumname::Basic($name) => $outenumname::Basic($exec),
             $enumname::Invest($name) => $outenumname::Invest($exec)
         }
-    }
+    };
+    (
+        $in:expr => $enumname:ident($name:ident);
+        $pytype_in:expr => $pytype_out:ident [ $BasicType:ty | $InvestType:ty ];
+        $exec:expr
+    ) => {
+        match $in {
+            $enumname::Basic($name) => {
+                $crate::unpack_py! { $pytype_in => $pytype_out [ $BasicType ]; $exec }
+            },
+            $enumname::Invest($name) => {
+                $crate::unpack_py! { $pytype_in => $pytype_out [ $InvestType ]; $exec }
+            }
+        }
+    };
+    (
+        $in:expr => $enumname:ident($name:ident);
+        $pytype_in:expr => $pytype_out:ident [ $BasicType:ty | $InvestType:ty ];
+        $exec:expr => $outenumname:ident
+    ) => {
+        match $in {
+            $enumname::Basic($name) => {
+                $crate::unpack_py! { $pytype_in => $pytype_out [ $BasicType ]; $outenumname::Basic($exec) }
+            },
+            $enumname::Invest($name) => {
+                $crate::unpack_py! { $pytype_in => $pytype_out [ $InvestType ]; $outenumname::Invest($exec) }
+            }
+        }
+    };
 }
 
 #[macro_export]
 macro_rules! unpack_py_enum_on_actions {
-    { $input:expr => $enumname:ident($output:ident); $actin:expr => $actout:ident; $exec:expr } => {
-        match $input {
-            $enumname::Basic($output) => {
-                crate::unpack_py! {
-                    $actin => pyactions [PyActions];
-                    {
-                        let $actout = pyactions.unpack();
-                        $exec
-                    }
-                }
-            },
-            $enumname::Invest($output) => {
-                crate::unpack_py! {
-                    $actin => pyactions [PyInvestActions];
-                    {
-                        let $actout = pyactions.unpack();
-                        $exec
-                    }
-                }
+    (
+        $in:expr => $enumname:ident($name:ident);
+        $actions_in:expr => $actions_out:ident;
+        $exec:expr
+    ) => {
+        $crate::unpack_py_enum! {
+            $in => $enumname($name);
+            $actions_in => $actions_out [PyActions | PyInvestActions];
+            {
+                let $actions_out = $actions_out.unpack();
+                $exec
             }
         }
     }
@@ -94,28 +137,42 @@ macro_rules! unpack_py_enum_on_actions {
 
 #[macro_export]
 macro_rules! unpack_py_enum_on_strategies {
-    { $input:expr => $enumname:ident($output:ident); $stratin:expr => $stratout:ident; $exec:expr } => {
-        match $input {
-            $enumname::Basic($output) => {
-                crate::unpack_py! {
-                    $stratin => actions_vec [Vec<PyActions>];
-                    {
-                        let $stratout = Strategies::from_actions(actions_vec.into_iter().map(|x| x.unpack()).collect());
-                        $exec
-                    }
-                }
-            },
-            $enumname::Invest($output) => {
-                crate::unpack_py! {
-                    $stratin => actions_vec [Vec<PyInvestActions>];
-                    {
-                        let $stratout = Strategies::from_actions(actions_vec.into_iter().map(|x| x.unpack()).collect());
-                        $exec
-                    }
-                }
+    (
+        $in:expr => $enumname:ident($name:ident);
+        $strategies_in:expr => $strategies_out:ident;
+        $exec:expr
+    ) => {
+        $crate::unpack_py_enum! {
+            $in => $enumname($name);
+            $strategies_in => $strategies_out [Vec<PyActions> | Vec<PyInvestActions>];
+            {
+                let $strategies_out = Strategies::from_actions(
+                        $strategies_out.into_iter().map(|pyactions|
+                            pyactions.unpack()
+                        ).collect()
+                    );
+                $exec
             }
         }
     }
+}
+
+#[macro_export]
+macro_rules! def_py_enum {
+    ($name:ident($contenttype:ident)) => {
+        #[derive(Clone)]
+        pub enum $name {
+            Basic($contenttype<Actions>),
+            Invest($contenttype<InvestActions>)
+        }
+    };
+    ($name:ident(Box<dyn $contenttype:ident>)) => {
+        #[derive(Clone)]
+        pub enum $name {
+            Basic(Box<dyn $contenttype<Actions>>),
+            Invest(Box<dyn $contenttype<InvestActions>>)
+        }
+    };
 }
 
 trait PyContainer {
