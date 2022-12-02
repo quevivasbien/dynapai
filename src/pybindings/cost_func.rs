@@ -36,18 +36,24 @@ impl PyCostFunc {
         Ok(PyCostFunc(CostFuncContainer::Invest(cost_func)))
     }
 
-    pub fn c_i(&self, i: usize, actions: &PyAny) -> f64 {
+    pub fn c_i(&self, i: usize, actions: &PyActions) -> f64 {
         unpack_py_enum_on_actions! {
-            &self.0 => CostFuncContainer(cost_func);
+            self.get() => CostFuncContainer(cost_func);
             actions => actions;
             cost_func.c_i(i, &actions)
         }
     }
-    pub fn c<'py>(&self, py: Python<'py>, actions: &PyAny) -> &'py PyArray1<f64> {
+    pub fn c<'py>(&self, py: Python<'py>, actions: &PyActions) -> &'py PyArray1<f64> {
         unpack_py_enum_on_actions! {
-            &self.0 => CostFuncContainer(cost_func);
+            self.get() => CostFuncContainer(cost_func);
             actions => actions;
             cost_func.c(&actions).into_pyarray(py)
         }
+    }
+
+    #[pyo3(name  = "atype")]
+    #[getter]
+    pub fn class(&self) -> String {
+        format!("{}", self.get().object_type())
     }
 }

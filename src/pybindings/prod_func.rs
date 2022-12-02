@@ -1,5 +1,5 @@
-use crate::{py::*, pycontainer};
-use crate::{unpack_py, init_rep};
+use crate::py::*;
+use crate::{pycontainer, unpack_py_enum, init_rep};
 
 
 #[derive(Clone)]
@@ -39,22 +39,22 @@ impl PyProdFunc {
         )
     }
 
-    fn f_i(&self, i: usize, actions: &PyAny) -> (f64, f64) {
-        unpack_py! {
-            actions => actions [PyActions | PyInvestActions];
-            self.0.f_i(i, &actions.0)
+    fn f_i(&self, i: usize, actions: &PyActions) -> (f64, f64) {
+        unpack_py_enum! {
+            &actions.0 => ActionContainer(actions);
+            self.0.f_i(i, actions)
         }
     }
 
-    fn f<'py>(&self, py: Python<'py>, actions: &PyAny) -> (&'py PyArray1<f64>, &'py PyArray1<f64>) {
-        let (s, p) = unpack_py! {
-            actions => actions [PyActions | PyInvestActions];
-            self.0.f(&actions.0)
+    fn f<'py>(&self, py: Python<'py>, actions: &PyActions) -> (&'py PyArray1<f64>, &'py PyArray1<f64>) {
+        let (s, p) = unpack_py_enum! {
+            &actions.0 => ActionContainer(actions);
+            self.0.f(actions)
         };
         (s.into_pyarray(py), p.into_pyarray(py))
     }
 
-    fn __call__<'py>(&self, py: Python<'py>, actions: &PyAny) -> (&'py PyArray1<f64>, &'py PyArray1<f64>) {
+    fn __call__<'py>(&self, py: Python<'py>, actions: &PyActions) -> (&'py PyArray1<f64>, &'py PyArray1<f64>) {
         self.f(py, actions)
     }
 

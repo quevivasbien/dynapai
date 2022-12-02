@@ -232,12 +232,6 @@ where A: ActionType + Clone + 'static,
     }
 }
 
-pub trait IteratingAggregator<A: ActionType>: Aggregator<A> + StateIterator<A> {}
-impl<A: ActionType, T: Aggregator<A> + StateIterator<A>> IteratingAggregator<A> for T {}
-
-pub type ExponentialDiscounter = FixedStateDiscounter<Actions>;
-pub type InvestExpDiscounter = DynStateDiscounter<InvestActions>;
-
 
 #[derive(Clone)]
 pub struct SolverResult<A: ActionType> {

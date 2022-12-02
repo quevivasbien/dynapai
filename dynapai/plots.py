@@ -2,16 +2,16 @@ from . import dynapai as dp
 import numpy as np
 import matplotlib.pyplot as plt
 
-from typing import Union, List
+from typing import List
 
 ylabels = ["$x_s$", "$x_p$", "$i_s$", "$i_p$"]
 
 # todo: make compatible with new strategies format
 def plot(
-    strategies: Union[List[dp.Actions], List[dp.InvestActions]],
+    strategies: List[dp.Actions],
     title = None, labels = None, logscale = True, figsize = None, show = True
 ):
-    data = np.stack([a.data() for a in strategies], axis = 0)
+    data = np.stack([a.data for a in strategies], axis = 0)
     labels = labels or [f"Player {i+1}" for i in range(data.shape[1])]
     n_axs = data.shape[2]
     figsize = figsize or (8, 2*n_axs)

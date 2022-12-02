@@ -78,7 +78,7 @@ impl PyPayoffFunc {
         )
     }
 
-    pub fn u_i(&self, i: usize, actions: &PyAny) -> f64 {
+    pub fn u_i(&self, i: usize, actions: &PyActions) -> f64 {
         unpack_py_enum_on_actions! {
             &self.0 => PayoffFuncContainer(pfunc);
             actions => actions;
@@ -86,7 +86,7 @@ impl PyPayoffFunc {
         }
     }
 
-    pub fn u<'py>(&self, py: Python<'py>, actions: &PyAny) -> &'py PyArray1<f64> {
+    pub fn u<'py>(&self, py: Python<'py>, actions: &PyActions) -> &'py PyArray1<f64> {
         unpack_py_enum_on_actions! {
             &self.0 => PayoffFuncContainer(pfunc);
             actions => actions;
@@ -94,7 +94,13 @@ impl PyPayoffFunc {
         }
     }
 
-    pub fn __call__<'py>(&self, py: Python<'py>, actions: &PyAny) -> &'py PyArray1<f64> {
+    #[pyo3(name  = "atype")]
+    #[getter]
+    pub fn class(&self) -> String {
+        format!("{}", self.get().object_type())
+    }
+
+    pub fn __call__<'py>(&self, py: Python<'py>, actions: &PyActions) -> &'py PyArray1<f64> {
         self.u(py, actions)
     }
 }

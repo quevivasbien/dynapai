@@ -1,4 +1,4 @@
-use crate::py::*;
+use crate::{py::*, unpack_py_enum};
 use crate::{def_py_enum, pycontainer};
 
 
@@ -21,13 +21,9 @@ impl PyState {
 
     #[staticmethod]
     fn common_beliefs(payoff_func: PyPayoffFunc) -> Self {
-        let state_container = match payoff_func.unpack() {
-            PayoffFuncContainer::Basic(payoff_func) => {
-                StateContainer::Basic(Box::new(CommonBeliefs(Box::new(payoff_func))))
-            },
-            PayoffFuncContainer::Invest(payoff_func) => {
-                StateContainer::Invest(Box::new(CommonBeliefs(Box::new(payoff_func))))
-            },
+        let state_container = unpack_py_enum! {
+            payoff_func.unpack() => PayoffFuncContainer(payoff_func);
+            Box::new(CommonBeliefs(Box::new(payoff_func))) => StateContainer
         };
         Self {
             state: state_container,
@@ -69,6 +65,12 @@ impl PyState {
             state: state_container,
             class: "HetBeliefs",
         }
+    }
+
+    #[pyo3(name  = "atype")]
+    #[getter]
+    pub fn class(&self) -> String {
+        format!("{}", self.get().object_type())
     }
 
     fn __str__(&self) -> String {

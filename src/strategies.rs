@@ -9,7 +9,7 @@ pub trait ActionType: DynClone + Send + Sync {
     fn data_mut(&mut self) -> &mut Array<f64, Ix2>;
     fn n(&self) -> usize { self.data().shape()[0] }
 
-    fn from_array(data: Array<f64, Ix2>) -> Self where Self: Sized;
+    fn from_array(data: Array<f64, Ix2>) -> Result<Self, String> where Self: Sized;
     fn nparams() -> usize where Self: Sized;
 
     fn xs(&self) -> ArrayView<f64, Ix1> { self.data().slice(s![.., 0]) }
@@ -18,54 +18,94 @@ pub trait ActionType: DynClone + Send + Sync {
 
 clone_trait_object!(ActionType);
 
-impl fmt::Display for dyn ActionType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Actions: xs = {}, xp = {}", self.xs(), self.xp())
+macro_rules! def_action_type {
+    ($name:ident, $n:expr) => {
+        #[derive(Clone)]
+        pub struct $name(Array<f64, Ix2>);
+
+        impl ActionType for $name {
+            fn data(&self) -> &Array<f64, Ix2> { &self.0 }
+            fn data_mut(&mut self) -> &mut Array<f64, Ix2> { &mut self.0 }
+
+            fn from_array(data: Array<f64, Ix2>) -> Result<Self, String> {
+                if data.shape()[1] != $n {
+                    return Err(concat!("When creating new ", stringify!($name), ": Input array must have ", stringify!($n), " columns").to_string());
+                }
+                Ok(Self(data))
+            }
+
+            fn nparams() -> usize { $n }
+        }
     }
 }
 
 pub trait InvestActionType: ActionType {
-    fn inv_s(&self) -> ArrayView<f64, Ix1> { self.data().slice(s![.., 2]) }
-    fn inv_p(&self) -> ArrayView<f64, Ix1> { self.data().slice(s![.., 3]) }
+    fn inv_s(&self) -> ArrayView<f64, Ix1>;
+    fn inv_p(&self) -> ArrayView<f64, Ix1>;
 }
 
 clone_trait_object!(InvestActionType);
 
-impl fmt::Display for dyn InvestActionType {
+
+pub trait SharingActionType: ActionType {
+    fn share_s(&self) -> ArrayView<f64, Ix1>;
+    fn share_p(&self) -> ArrayView<f64, Ix1>;
+}
+
+clone_trait_object!(SharingActionType);
+
+pub trait InvestSharingActionType: InvestActionType + SharingActionType {}
+clone_trait_object!(InvestSharingActionType);
+impl<A: InvestActionType + SharingActionType> InvestSharingActionType for A {}
+
+
+def_action_type!(Actions, 2);
+
+impl fmt::Display for Actions {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "InvestActions: xs = {}, xp = {}, inv_s = {}, inv_p = {}", self.xs(), self.xp(), self.inv_s(), self.inv_p())
+        write!(f, "Actions: xs = {:.4}, xp = {:.4}", self.xs(), self.xp())
     }
 }
 
-#[derive(Clone)]
-pub struct Actions(Array<f64, Ix2>);
 
-impl ActionType for Actions {
-    fn data(&self) -> &Array<f64, Ix2> { &self.0 }
-    fn data_mut(&mut self) -> &mut Array<f64, Ix2> { &mut self.0 }
+def_action_type!(InvestActions, 4);
 
-    fn from_array(data: Array<f64, Ix2>) -> Self {
-        assert_eq!(data.shape()[1], 2);
-        Self(data)
-    }
-    fn nparams() -> usize { 2 }
+impl InvestActionType for InvestActions {
+    fn inv_s(&self) -> ArrayView<f64, Ix1> { self.data().slice(s![.., 2]) }
+    fn inv_p(&self) -> ArrayView<f64, Ix1> { self.data().slice(s![.., 3]) }
 }
 
-#[derive(Clone)]
-pub struct InvestActions(Array<f64, Ix2>);
-
-impl ActionType for InvestActions {
-    fn data(&self) -> &Array<f64, Ix2> { &self.0 }
-    fn data_mut(&mut self) -> &mut Array<f64, Ix2> { &mut self.0 }
-
-    fn from_array(data: Array<f64, Ix2>) -> Self {
-        assert_eq!(data.shape()[1], 4);
-        Self(data)
+impl fmt::Display for InvestActions {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "InvestActions: xs = {:.4}, xp = {:.4}, inv_s = {:.4}, inv_p = {:.4}", self.xs(), self.xp(), self.inv_s(), self.inv_p())
     }
-    fn nparams() -> usize { 4 }
 }
 
-impl InvestActionType for InvestActions {}
+
+def_action_type!(SharingActions, 6);
+
+impl InvestActionType for SharingActions {
+    fn inv_s(&self) -> ArrayView<f64, Ix1> { self.data().slice(s![.., 2]) }
+    fn inv_p(&self) -> ArrayView<f64, Ix1> { self.data().slice(s![.., 3]) }
+}
+
+impl SharingActionType for SharingActions {
+    fn share_s(&self) -> ArrayView<f64, Ix1> { self.data().slice(s![.., 4]) }
+    fn share_p(&self) -> ArrayView<f64, Ix1> { self.data().slice(s![.., 5]) }
+}
+
+impl fmt::Display for SharingActions {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "SharingActions: xs = {:.4}, xp = {:.4}, inv_s = {:.4}, inv_p = {:.4}, share_s = {:.4}, share_p = {:.4}",
+            self.xs(), self.xp(),
+            self.inv_s(), self.inv_p(),
+            self.share_s(), self.share_p()
+        )
+    }
+}
+
 
 #[derive(Clone)]
 pub struct Strategies<A: ActionType>(Vec<A>);
@@ -101,9 +141,11 @@ impl<A: ActionType> Strategies<A> {
             Ok(d) => d,
             Err(e) => return Err(format!("Error when creating LogNormal distribution: {}", e))
         };
-        Ok(Self((0..t).map(|_|
-            <A as ActionType>::from_array(Array::random((n, <A as ActionType>::nparams()), dist))
-        ).collect()))
+        let mut data = Vec::<A>::with_capacity(t);
+        for _t in 0..t {
+            data.push(A::from_array(Array::random((n, A::nparams()), dist))?);
+        }
+        Ok(Self(data))
     }
 }
 
