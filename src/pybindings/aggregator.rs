@@ -1,7 +1,7 @@
 use rayon::prelude::*;
 
 use crate::py::*;
-use crate::{init_rep, unpack_py_enum_on_strategies, pycontainer, def_py_enum, unpack_py_enum, unpack_py_enum_expect};
+use crate::{init_rep, pycontainer, def_py_enum, unpack_py_enum, unpack_py_enum_expect};
 
 
 #[pyclass(name = "SolverOptions")]
@@ -80,6 +80,7 @@ impl PySolverResult {
         Self{ status, strategies }
     }
 
+    #[getter]
     pub fn optimum(&self) -> PyResult<Vec<PyActions>> {
         match self.get() {
             Some(s) => Ok(s.clone()),
@@ -94,7 +95,7 @@ impl PySolverResult {
                 ).collect::<Vec<_>>().join("\n"),
             None => "None".to_string()
         };
-        format!("SolverResult:\nstatus = {}\nstrategies = {}", self.status, s_string)
+        format!("SolverResult:\nstatus: {}\nstrategies:\n{}", self.status, s_string)
     }
 }
 
@@ -171,7 +172,7 @@ impl PyAggregator {
     pub fn new(state: &PyAny, gammas: Vec<f64>, end_on_win: bool) -> PyResult<Self> {
         Ok(Self(
             unpack_py_enum! {
-                as_state(state).unpack() => StateContainer(state);
+                [StateContainer](state) = as_state(state).unpack();
                 {
                     let discounter = match DynStateDiscounter::new(state, Array::from(gammas)) {
                         Ok(d) => d,
@@ -207,25 +208,23 @@ impl PyAggregator {
 
     pub fn u_i(&self, i: usize, strategies: Vec<PyActions>) -> PyResult<f64> {
         let pystrategies = PyStrategies::from_actions_list(strategies)?;
-        unpack_py_enum_on_strategies! {
-            &self.0 => AggregatorContainer(aggregator);
-            pystrategies => strategies;
+        unpack_py_enum! {
+            [AggregatorContainer, StrategyContainer](aggregator, strategies) = self.get(), pystrategies.get();
             Ok(aggregator.u_i(i, &strategies))
         }
     }
 
     pub fn u<'py>(&self, py: Python<'py>, strategies: Vec<PyActions>) -> PyResult<&'py PyArray1<f64>> {
         let pystrategies = PyStrategies::from_actions_list(strategies)?;
-        unpack_py_enum_on_strategies! {
-            &self.0 => AggregatorContainer(aggregator);
-            pystrategies => strategies;
+        unpack_py_enum! {
+            [AggregatorContainer, StrategyContainer](aggregator, strategies) = self.get(), pystrategies.get();
             Ok(aggregator.u(&strategies).into_pyarray(py))
         }
     }
 
     #[args(t = "None", init = "None", options = "&DEFAULT_OPTIONS")]
     pub fn solve(&self, t: Option<usize>, init: Option<Vec<PyActions>>, options: &PySolverOptions) -> PySolverResult {
-        let res = match &self.0 {
+        let res = match self.get() {
             AggregatorContainer::Basic(aggregator) => {
                 let options = maybe_options!(Basic, t, init, options);
                 solve_with!(aggregator.as_ref(), &options)
@@ -234,7 +233,10 @@ impl PyAggregator {
                 let options = maybe_options!(Invest, t, init, options);
                 solve_with!(aggregator.as_ref(), &options)
             },
-            _ => unimplemented!()
+            AggregatorContainer::Sharing(aggregator) => {
+                let options = maybe_options!(Sharing, t, init, options);
+                solve_with!(aggregator.as_ref(), &options)
+            },
         };
         match res {
             Ok(strategies) => PySolverResult::new("success".to_string(), Some(strategies)),
@@ -242,10 +244,45 @@ impl PyAggregator {
         }
     }
 
-    #[pyo3(name  = "atype")]
+    pub fn state0(&self) -> PyState {
+        PyState {
+            state: unpack_py_enum! {
+                [AggregatorContainer](aggregator) = self.get();
+                aggregator.state0().clone() => StateContainer
+            },
+            class: "?"
+        }
+    }
+
+    pub fn states(&self, strategies: Vec<PyActions>) -> Vec<PyState> {
+        let mut states = Vec::with_capacity(strategies.len());
+        states.push(self.state0());
+        for actions in strategies[0..strategies.len() - 1].iter() {
+            let last_state = states.last().unwrap();
+            states.push(
+                PyState {
+                    state: unpack_py_enum! {
+                        [AggregatorContainer, ActionContainer, StateContainer](aggregator, actions, state) = self.get(), actions.get(), last_state.get();
+                        {
+                            let mut state = state.clone();
+                            aggregator.advance_state(&mut state, actions);
+                            state
+                        } => StateContainer
+                    },
+                    class: "?"
+                }
+            );
+        }
+        states
+    }
+
     #[getter]
-    pub fn class(&self) -> String {
+    pub fn atype(&self) -> String {
         format!("{}", self.get().object_type())
+    }
+
+    pub fn __str__(&self) -> String {
+        format!("Aggregator: atype = {}", self.atype())
     }
 }
 
@@ -268,7 +305,7 @@ macro_rules! build_agg_with_type {
             let mut aggs_out = Vec::with_capacity($aggregators.len());
             for a in $aggregators.into_iter() {
                 let a_ = unpack_py_enum_expect!(
-                    a.unpack() => AggregatorContainer::$obj_type(aggregators)
+                    a.unpack() => AggregatorContainer::$obj_type
                 )?;
                 aggs_out.push(a_);
             }
@@ -303,7 +340,7 @@ impl PyScenario {
 
     #[args(t = "None", init = "None", options = "&DEFAULT_OPTIONS")]
     pub fn solve(&self, t: Option<usize>, init: Option<Vec<PyActions>>, options: &PySolverOptions) -> Vec<PySolverResult> {
-        match &self.0 {
+        match self.get() {
             ScenarioContainer::Basic(scenario) => {
                 scenario.par_iter().map(|aggregator| {
                     let res = solve_with!(
@@ -322,7 +359,15 @@ impl PyScenario {
                     PySolverResult::from_result(res)
                 }).collect()
             }
-            ScenarioContainer::Sharing(_) => unimplemented!()
+            ScenarioContainer::Sharing(scenario) => {
+                scenario.par_iter().map(|aggregator| {
+                    let res = solve_with!(
+                        aggregator.as_ref(),
+                        &maybe_options!(Sharing, t, init, options)
+                    );
+                    PySolverResult::from_result(res)
+                }).collect()
+            }
         }
     }
 }

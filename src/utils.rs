@@ -10,6 +10,11 @@ where I: Iterator<Item = f64>, J: Iterator<Item = f64>
     a.zip(b).all(|(a, b)| isapprox(a, b, rtol, atol))
 }
 
+pub fn positive_bound(x: f64) -> f64
+{
+    1. - f64::exp(-x)
+}
+
 // macro for creating vector of related structs
 #[macro_export]
 macro_rules! init_rep {

@@ -1,6 +1,6 @@
 use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::{DynClone, clone_trait_object};
-use numpy::ndarray::{Array, Ix1};
+use numpy::{ndarray::{Array, Ix1, s}, Ix2};
 
 use crate::strategies::*;
 
@@ -17,75 +17,66 @@ pub trait CostFunc<A: ActionType>: DynClone + Downcast + Send + Sync {
 clone_trait_object!(<A> CostFunc<A> where A: ActionType);
 impl_downcast!(CostFunc<A> where A: ActionType);
 
-#[derive(Clone, Debug)]
-pub struct FixedUnitCost {
-    pub r: Array<f64, Ix1>,
-}
-
-impl FixedUnitCost {
-    pub fn from_elem(n: usize, r: f64) -> FixedUnitCost {
-        FixedUnitCost {
-            r: Array::from_elem(n, r)
-        }
-    }
-}
-
-impl CostFunc<Actions> for FixedUnitCost {
-
-    fn c_i(&self, i: usize, actions: &Actions) -> f64 {
-        self.r[i] * (actions.xs()[i] + actions.xp()[i])
-    }
+pub trait FixedCost<A: ActionType>: CostFunc<A> {
+    fn nparams() -> usize where Self: Sized;
+    fn r(&self) -> &Array<f64, Ix2>;
+    fn r_mut(&mut self) -> &mut Array<f64, Ix2>;
+    fn new_unchecked(r: Array<f64, Ix2>) -> Self where Self: Sized;
     
-    fn n(&self) -> usize {
-        self.r.len()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct FixedInvestCost {
-    n: usize,
-    pub r_x: Array<f64, Ix1>,
-    pub r_inv: Array<f64, Ix1>,
-}
-
-impl FixedInvestCost {
-    pub fn new(r_x: Array<f64, Ix1>, r_inv: Array<f64, Ix1>) -> Result<FixedInvestCost, &'static str> {
-        if r_x.len() != r_inv.len() {
-            return Err("r_x and r_inv must have the same length");
-        }
-        Ok(FixedInvestCost {
-            n: r_x.len(),
-            r_x,
-            r_inv,
-        })
-    }
-    pub fn from_elems(n: usize, r_x: f64, r_inv: f64) -> FixedInvestCost {
-        FixedInvestCost {
-            n,
-            r_x: Array::from_elem(n, r_x),
-            r_inv: Array::from_elem(n, r_inv),
+    fn new(r: Array<f64, Ix2>) -> Result<Self, String> where Self: Sized {
+        if r.shape()[1] != Self::nparams() {
+            Err(format!(
+                "Invalid number of params: {}, expected {}",
+                r.shape()[1], Self::nparams()
+            ))
+        } else {
+            Ok(Self::new_unchecked(r))
         }
     }
-}
-
-impl CostFunc<Actions> for FixedInvestCost {
-
-    fn c_i(&self, i: usize, actions: &Actions) -> f64 {
-        self.r_x[i] * (actions.xs()[i] + actions.xp()[i])
-    }
-    
-    fn n(&self) -> usize {
-        self.n
+    fn from_params(n: usize, params: Vec<f64>) -> Self where Self: Sized {
+        let r = Array::from_shape_fn(
+            (n, params.len()),
+            |(_i, j)| params[j]
+        );
+        Self::new_unchecked(r)
     }
 }
 
-impl CostFunc<InvestActions> for FixedInvestCost {
-
-    fn c_i(&self, i: usize, actions: &InvestActions) -> f64 {
-        self.r_x[i] * (actions.xs()[i] + actions.xp()[i]) + self.r_inv[i] * (actions.inv_s()[i] + actions.inv_p()[i])
+impl<A: ActionType, C: FixedCost<A>> CostFunc<A> for C {
+    fn c_i(&self, i: usize, actions: &A) -> f64 {
+        self.r().slice(s![i, ..]).dot(&actions.data().slice(s![i, ..]))
     }
 
     fn n(&self) -> usize {
-        self.n
+        self.r().shape()[0]
     }
 }
+
+clone_trait_object!(<A> FixedCost<A> where A: ActionType);
+impl_downcast!(FixedCost<A> where A: ActionType);
+
+macro_rules! impl_fixed_cost {
+    ($name:ident, $a_type:ident) => {
+        #[derive(Clone)]
+        pub struct $name(pub Array<f64, Ix2>);
+
+        impl FixedCost<$a_type> for $name {
+            fn nparams() -> usize {
+                $a_type::nparams()
+            }
+            fn r(&self) -> &Array<f64, Ix2> {
+                &self.0
+            }
+            fn r_mut(&mut self) -> &mut Array<f64, Ix2> {
+                &mut self.0
+            }
+            fn new_unchecked(r: Array<f64, Ix2>) -> Self {
+                Self(r)
+            }
+        }
+    };
+}
+
+impl_fixed_cost!(BasicFixedCost, Actions);
+impl_fixed_cost!(InvestFixedCost, InvestActions);
+impl_fixed_cost!(SharingFixedCost, SharingActions);

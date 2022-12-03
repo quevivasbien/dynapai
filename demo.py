@@ -19,7 +19,7 @@ class Tester:
             beta = np.full(n, 0.5),
         )
         self.rewardFunc = dp.RewardFunc(n)
-        self.riskFunc = dp.RiskFunc.winner_only_risk(np.full(n, 0.5))
+        self.riskFunc = dp.RiskFunc.winner_only(np.full(n, 0.5))
     
     def solve_agg(self, agg, strat_type = 'strategies', plot = False):
         print(f"Solving for optimal {strat_type}, with {self.n} players and {self.t} time steps...")
@@ -28,7 +28,7 @@ class Tester:
         time1 = time()
         print(f"Solved in {time1 - time0:.3f} seconds")
         print(f"Optimal {strat_type}:\n{res}")
-        optimum = res.optimum()
+        optimum = res.optimum
         print(f"Payoff from optimal {strat_type}: {agg.u(optimum)}")
         print()
 
@@ -43,7 +43,7 @@ class Tester:
             csf = dp.CSF.default(),
             risk_func = self.riskFunc,
             d = np.full(self.n, 1.),
-            cost_func = dp.CostFunc.fixed(np.full(self.n, 0.1)),
+            cost_func = dp.CostFunc.fixed_basic(np.full(self.n, 0.1)),
         )
 
         return dp.Aggregator(
@@ -79,13 +79,36 @@ class Tester:
         agg = self.get_invest_agg(end_on_win)
         return self.solve_agg(agg, strat_type = 'invest strategies', plot = plot)
 
-    def solve_scenario(self):
+    def get_sharing_agg(self, end_on_win = False):
+        payoffFunc = dp.PayoffFunc(
+            prod_func = self.prodFunc,
+            reward_func = self.rewardFunc,
+            csf = dp.CSF.maybe_no_win(),
+            risk_func = self.riskFunc,
+            d = np.full(self.n, 1.),
+            cost_func = dp.CostFunc.fixed_sharing(
+                np.full(self.n, 0.1),
+                np.full(self.n, 0.01),
+            ),
+        )
+
+        return dp.Aggregator(
+            state = payoffFunc,
+            gammas = self.gammas,
+            end_on_win = end_on_win,
+        )
+
+    def solve_sharing(self, plot = False, end_on_win = False):
+        agg = self.get_sharing_agg(end_on_win)
+        return self.solve_agg(agg, strat_type = 'sharing + invest strategies', plot = plot)
+
+    def solve_scenario(self, end_on_win = False):
         # create two prod funcs with different values of theta
         payoff_funcs = dp.PayoffFunc.expand_from(
             prod_func_list = [self.prodFunc],
             risk_func_list = [
-                dp.RiskFunc.winner_only_risk(np.full(self.n, 0.5)),
-                dp.RiskFunc.winner_only_risk(np.full(self.n, 1.0))
+                dp.RiskFunc.winner_only(np.full(self.n, 0.5)),
+                dp.RiskFunc.winner_only(np.full(self.n, 1.0))
             ],
             csf_list = [dp.CSF.maybe_no_win()],
             reward_func_list = [self.rewardFunc],
@@ -99,6 +122,7 @@ class Tester:
         aggs = dp.Aggregator.expand_from(
             state_list = payoff_funcs,
             gammas_list = [self.gammas],
+            end_on_win = end_on_win,
         )
 
         print("Trying [parallel] solve of scenario...")
@@ -120,6 +144,7 @@ def main():
     parser.add_argument('--t', type = int, default = 5, help = 'number of time steps in test scenarios')
     parser.add_argument('--basic', action = 'store_true', help = 'solve basic problem')
     parser.add_argument('--invest', action = 'store_true', help = 'solve problem with investment')
+    parser.add_argument('--sharing', action = 'store_true', help = 'solve problem with sharing + investment')
     parser.add_argument('--scenario', action = 'store_true', help = 'solve multiple invest problems in parallel')
     parser.add_argument('--all', action = 'store_true', help = 'run all tests')
     parser.add_argument('--end-on-win', action = 'store_true', help = 'end game the first time someone wins')
@@ -131,6 +156,8 @@ def main():
         tester.solve_basic(args.plot, args.end_on_win)
     if args.invest or args.all:
         tester.solve_invest(args.plot, args.end_on_win)
+    if args.sharing or args.all:
+        tester.solve_sharing(args.plot, args.end_on_win)
     if args.scenario or args.all:
         tester.solve_scenario()
 

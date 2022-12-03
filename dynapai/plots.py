@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 from typing import List
 
-ylabels = ["$x_s$", "$x_p$", "$i_s$", "$i_p$"]
+ylabels = ["$x_s$", "$x_p$", "$i_s$", "$i_p$", "$ʃ_s$", "$ʃ_p$"]
 
 # todo: make compatible with new strategies format
 def plot(

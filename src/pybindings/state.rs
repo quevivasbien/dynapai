@@ -1,5 +1,5 @@
-use crate::{py::*, unpack_py_enum};
-use crate::{def_py_enum, pycontainer};
+use crate::py::*;
+use crate::{def_py_enum, pycontainer, unpack_py_enum};
 
 
 def_py_enum!(StateContainer(Box<dyn State>));
@@ -12,6 +12,7 @@ pub struct PyState {
 }
 pycontainer!(PyState(state: StateContainer));
 
+
 #[pymethods]
 impl PyState {
     #[new]
@@ -22,7 +23,7 @@ impl PyState {
     #[staticmethod]
     fn common_beliefs(payoff_func: PyPayoffFunc) -> Self {
         let state_container = unpack_py_enum! {
-            payoff_func.unpack() => PayoffFuncContainer(payoff_func);
+            [PayoffFuncContainer](payoff_func) = payoff_func.unpack();
             Box::new(CommonBeliefs(Box::new(payoff_func))) => StateContainer
         };
         Self {
@@ -67,14 +68,23 @@ impl PyState {
         }
     }
 
-    #[pyo3(name  = "atype")]
+    // pub fn belief(&self, i: usize) -> PyPayoffFunc {
+    //     unpack_py_enum! {
+    //         [StateContainer](state) = self.state.clone();
+    //         {
+    //             let belief = state.belief(i);
+                    //to-do!
+    //         }
+    //     }
+    // }
+
     #[getter]
-    pub fn class(&self) -> String {
+    pub fn atype(&self) -> String {
         format!("{}", self.get().object_type())
     }
 
     fn __str__(&self) -> String {
-        format!("State ({})", self.class)
+        format!("State ({}): atype = {}", self.class, self.atype())
     }
 }
 

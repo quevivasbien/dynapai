@@ -10,10 +10,6 @@ pycontainer!(PyCSF(csf: Box<dyn CSF>));
 
 #[pymethods]
 impl PyCSF {
-    #[new]
-    pub fn new() -> Self {
-        Self::default()
-    }
 
     #[staticmethod]
     pub fn default() -> Self {

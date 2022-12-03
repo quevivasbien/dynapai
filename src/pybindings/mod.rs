@@ -48,6 +48,13 @@ trait HasObjectType {
     fn object_type(&self) -> ObjectType;
 }
 
+#[macro_export]
+macro_rules! action_type_for {
+    (Basic) => { Actions };
+    (Invest) => { InvestActions };
+    (Sharing) => { SharingActions };
+}
+
 // defines an enum that holds variants of an object for each ObjectType variant
 #[macro_export]
 macro_rules! def_py_enum {
@@ -87,6 +94,45 @@ macro_rules! def_py_enum {
     };
 }
 
+// helper for recursively unpacking sets of enums
+#[macro_export]
+macro_rules! unpack_inner {
+    (
+        require $obj_type:ident :
+        [$enumname:ident, $($other_enumname:ident),*]($name:ident, $($other_name:ident),*) = $in:expr, $($other_in:expr),*;
+        $exec:expr $(=> $outenumname:ident)?
+    ) => {
+        match $in {
+            $enumname::$obj_type($name) => $crate::unpack_inner!(
+                require $obj_type :
+                [$($other_enumname),*]($($other_name),*) = $($other_in),*;
+                $exec $(=> $outenumname)?
+            ),
+            _ => panic!("Invalid object type, expected {} type", ObjectType::$obj_type),
+        }
+    };
+    (
+        require $obj_type:ident :
+        [$enumname:ident]($name:ident) = $in:expr;
+        $exec:expr
+    ) => {
+        match $in {
+            $enumname::$obj_type($name) => $exec,
+            _ => panic!("Invalid object type, expected {} type", ObjectType::$obj_type),
+        }
+    };
+    (
+        require $obj_type:ident :
+        [$enumname:ident]($name:ident) = $in:expr;
+        $exec:expr => $outenumname:ident
+    ) => {
+        match $in {
+            $enumname::$obj_type($name) => $outenumname::$obj_type($exec),
+            _ => panic!("Invalid object type, expected {} type", ObjectType::$obj_type),
+        }
+    };
+}
+
 
 // This macro takes a container enum with Basic & Invest variants,
 // unpacks them into a variable $name,
@@ -98,7 +144,7 @@ macro_rules! def_py_enum {
 #[macro_export]
 macro_rules! unpack_py_enum {
     // for when we want to execute the same code for all variants
-    ( $in:expr => $enumname:ident($name:ident); $exec:expr ) => {
+    ( [$enumname:ident]($name:ident) = $in:expr; $exec:expr ) => {
         match $in {
             $enumname::Basic($name) => $exec,
             $enumname::Invest($name) => $exec,
@@ -106,105 +152,51 @@ macro_rules! unpack_py_enum {
         }
     };
     // for when we want to repackage result in new enum at the end
-    ( $in:expr => $enumname:ident($name:ident); $exec:expr => $outenumname:ident ) => {
+    ( [$enumname:ident]($name:ident) = $in:expr; $exec:expr => $outenumname:ident ) => {
         match $in {
             $enumname::Basic($name) => $outenumname::Basic($exec),
             $enumname::Invest($name) => $outenumname::Invest($exec),
             $enumname::Sharing($name) => $outenumname::Sharing($exec),
         }
     };
-    // for when we want to combine the enum with some other type
+    // for when we want to combine the enum with some other type(s)
+    // can also repackage result in an enum if we want
     (
-        $in:expr => $enumname:ident($name:ident);
-        $other_in:expr => $other_enumname:ident($other_name:ident);
-        $exec:expr
+        [$enumname:ident, $($other_enumname:ident),*]($name:ident, $($other_name:ident),*) = $in:expr, $($other_in:expr),*;
+        $exec:expr $(=> $outenumname:ident)?
     ) => {
         match $in {
             $enumname::Basic($name) => {
-                match $other_in {
-                    $other_enumname::Basic($other_name) => $exec,
-                    _ => panic!("Invalid input type; expected Basic type"),
-                }
+                $crate::unpack_inner!(
+                    require Basic:
+                    [$($other_enumname),*]($($other_name),*) = $($other_in),*;
+                    $exec $(=> $outenumname)?
+                )
             },
             $enumname::Invest($name) => {
-                match $other_in {
-                    $other_enumname::Invest($other_name) => $exec,
-                    _ => panic!("Invalid input type; expected Invest type"),
-                }
+                $crate::unpack_inner!(
+                    require Invest:
+                    [$($other_enumname),*]($($other_name),*) = $($other_in),*;
+                    $exec $(=> $outenumname)?
+                )
             },
             $enumname::Sharing($name) => {
-                match $other_in {
-                    $other_enumname::Sharing($other_name) => $exec,
-                    _ => panic!("Invalid input type; expected Sharing type"),
-                }
-            },
-        }
-    };
-    // for when we want to combine the enum with some other type
-    // and repackage the result in an enum
-    (
-        $in:expr => $enumname:ident($name:ident);
-        $other_in:expr => $other_enumname:ident($other_name:ident);
-        $exec:expr => $outenumname:ident
-    ) => {
-        match $in {
-            $enumname::Basic($name) => {
-                match $other_in {
-                    $other_enumname::Basic($other_name) => $outenumname($exec),
-                    _ => panic!("Invalid input type; expected Basic type"),
-                }
-            },
-            $enumname::Invest($name) => {
-                match $other_in {
-                    $other_enumname::Invest($other_name) => $outenumname($exec),
-                    _ => panic!("Invalid input type; expected Invest type"),
-                }
-            },
-            $enumname::Sharing($name) => {
-                match $other_in {
-                    $other_enumname::Sharing($other_name) => $outenumname($exec),
-                    _ => panic!("Invalid input type; expected Sharing type"),
-                }
+                $crate::unpack_inner!(
+                    require Sharing:
+                    [$($other_enumname),*]($($other_name),*) = $($other_in),*;
+                    $exec $(=> $outenumname)?
+                )
             },
         }
     };
 }
 
-#[macro_export]
-macro_rules! unpack_py_enum_on_actions {
-    (
-        $in:expr => $enumname:ident($name:ident);
-        $actions_in:expr => $actions_out:ident;
-        $exec:expr
-    ) => {
-        $crate::unpack_py_enum! {
-            $in => $enumname($name);
-            $actions_in.get() => ActionContainer($actions_out);
-            $exec
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! unpack_py_enum_on_strategies {
-    (
-        $in:expr => $enumname:ident($name:ident);
-        $strategies_in:expr => $strategies_out:ident;
-        $exec:expr
-    ) => {
-        $crate::unpack_py_enum! {
-            $in => $enumname($name);
-            $strategies_in.get() => StrategyContainer($strategies_out);
-            $exec
-        }
-    }
-}
 
 #[macro_export]
 macro_rules! unpack_py_enum_expect {
-    ( $in:expr => $enumname:ident::$variant:ident($name:ident) ) => {
+    ( $in:expr => $enumname:ident::$variant:ident ) => {
         match $in {
-            $enumname::$variant($name) => Ok($name),
+            $enumname::$variant(x) => Ok(x),
             _ => Err(PyErr::new::<PyTypeError, _>("Invalid input type")),
         }
     };

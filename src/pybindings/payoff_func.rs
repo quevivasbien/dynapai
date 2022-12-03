@@ -1,7 +1,7 @@
 use crate::init_rep;
 use crate::py::*;
 use crate::pycontainer;
-use crate::{def_py_enum, unpack_py_enum, unpack_py_enum_on_actions};
+use crate::{def_py_enum, unpack_py_enum};
 
 def_py_enum!(PayoffFuncContainer(ModularPayoff));
 
@@ -35,7 +35,7 @@ impl PyPayoffFunc {
         };
         let disaster_cost = Box::new(ConstantDisasterCost { d: Array::from(d) });
         Ok(Self(unpack_py_enum! {
-            cost_func.unpack() => CostFuncContainer(cost_func);
+            [CostFuncContainer](cost_func) = cost_func.unpack();
             match ModularPayoff::new(
                 prod_func,
                 risk_func,
@@ -79,24 +79,21 @@ impl PyPayoffFunc {
     }
 
     pub fn u_i(&self, i: usize, actions: &PyActions) -> f64 {
-        unpack_py_enum_on_actions! {
-            &self.0 => PayoffFuncContainer(pfunc);
-            actions => actions;
+        unpack_py_enum! {
+            [PayoffFuncContainer, ActionContainer](pfunc, actions) = self.get(), actions.get();
             pfunc.u_i(i, &actions)
         }
     }
 
     pub fn u<'py>(&self, py: Python<'py>, actions: &PyActions) -> &'py PyArray1<f64> {
-        unpack_py_enum_on_actions! {
-            &self.0 => PayoffFuncContainer(pfunc);
-            actions => actions;
+        unpack_py_enum! {
+            [PayoffFuncContainer, ActionContainer](pfunc, actions) = self.get(), actions.get();
             pfunc.u(&actions).into_pyarray(py)
         }
     }
 
-    #[pyo3(name  = "atype")]
     #[getter]
-    pub fn class(&self) -> String {
+    pub fn atype(&self) -> String {
         format!("{}", self.get().object_type())
     }
 

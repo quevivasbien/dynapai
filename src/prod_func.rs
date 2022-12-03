@@ -1,9 +1,10 @@
 use downcast_rs::{Downcast, impl_downcast};
-use numpy::ndarray::{Array, Ix1};
 use dyn_clone::{DynClone, clone_trait_object};
+use numpy::ndarray::{Array, Ix1};
 use std::fmt;
 
-use crate::strategies::*;
+use crate::prelude::*;
+
 
 pub trait ProdFunc<A: ActionType>: DynClone + Downcast + MutatesOn<A> + Send + Sync {
     fn f_i(&self, i: usize, actions: &A) -> (f64, f64);
@@ -83,10 +84,10 @@ impl MutatesOn<SharingActions> for DefaultProd {
         let share_p = actions.share_p();
         self.a.iter_mut().zip(self.b.iter_mut()).enumerate().for_each(|(i, (a, b))| {
             *a += inv_s[i] + old_a.iter().zip(share_s.iter()).map(|(a_, sh_s)|
-                f64::max(0., sh_s * (a_ - old_a[i]))
+                f64::max(0., positive_bound(*sh_s) * (a_ - old_a[i]))
             ).sum::<f64>();
             *b += inv_p[i] + old_b.iter().zip(share_p.iter()).map(|(b_, sh_p)|
-                f64::max(0., sh_p * (b_ - old_b[i]))
+                f64::max(0., positive_bound(*sh_p) * (b_ - old_b[i]))
             ).sum::<f64>();
         });
     }

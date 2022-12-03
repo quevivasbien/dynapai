@@ -41,14 +41,14 @@ impl PyProdFunc {
 
     fn f_i(&self, i: usize, actions: &PyActions) -> (f64, f64) {
         unpack_py_enum! {
-            &actions.0 => ActionContainer(actions);
+            [ActionContainer](actions) = actions.get();
             self.0.f_i(i, actions)
         }
     }
 
     fn f<'py>(&self, py: Python<'py>, actions: &PyActions) -> (&'py PyArray1<f64>, &'py PyArray1<f64>) {
         let (s, p) = unpack_py_enum! {
-            &actions.0 => ActionContainer(actions);
+            [ActionContainer](actions) = actions.get();
             self.0.f(actions)
         };
         (s.into_pyarray(py), p.into_pyarray(py))

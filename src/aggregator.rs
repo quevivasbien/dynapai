@@ -5,7 +5,7 @@ use numpy::ndarray::{Array, Ix1};
 use crate::prelude::*;
 
 
-pub trait Aggregator<A: ActionType>: DynClone + Send + Sync {
+pub trait Aggregator<A: ActionType>: StateIterator<A> + DynClone + Send + Sync {
     fn n(&self) -> usize;
     fn u_i(&self, i: usize, strategies: &Strategies<A>) -> f64;
     fn u(&self, strategies: &Strategies<A>) -> Array<f64, Ix1> {

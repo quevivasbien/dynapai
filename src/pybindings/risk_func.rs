@@ -10,13 +10,9 @@ pycontainer!(PyRiskFunc(risk_func: Box<dyn RiskFunc>));
 
 #[pymethods]
 impl PyRiskFunc {
-    #[new]
-    pub fn new(theta: Vec<f64>) -> Self {
-        Self::winner_only_risk(theta)
-    }
 
     #[staticmethod]
-    pub fn winner_only_risk(theta: Vec<f64>) -> Self {
+    pub fn winner_only(theta: Vec<f64>) -> Self {
         Self{ risk_func: Box::new(WinnerOnlyRisk { theta: Array::from(theta) }), class: "WinnerOnly" }
     }
 

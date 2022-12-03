@@ -46,7 +46,7 @@ impl PyActions {
 
     pub fn data(&self) -> &Array<f64, Ix2> {
         unpack_py_enum! {
-            &self.0 => ActionContainer(actions);
+            [ActionContainer](actions) = self.get();
             actions.data()
         }
     }
@@ -101,7 +101,7 @@ impl PyActions {
     #[getter]
     pub fn n(&self) -> usize {
         unpack_py_enum! {
-            &self.0 => ActionContainer(actions);
+            [ActionContainer](actions) = self.get();
             actions.n()
         }
     }
@@ -109,7 +109,7 @@ impl PyActions {
     #[getter]
     pub fn xs<'py>(&self, py: Python<'py>) -> &'py PyArray1<f64> {
         unpack_py_enum! {
-            &self.0 => ActionContainer(actions);
+            [ActionContainer](actions) = self.get();
             PyArray1::from_array(py, &actions.xs())
         }
     }
@@ -117,12 +117,11 @@ impl PyActions {
     #[getter]
     pub fn xp<'py>(&self, py: Python<'py>) -> &'py PyArray1<f64> {
         unpack_py_enum! {
-            &self.0 => ActionContainer(actions);
+            [ActionContainer](actions) = self.get();
             PyArray1::from_array(py, &actions.xp())
         }
     }
 
-    #[pyo3(name  = "atype")]
     #[getter]
     pub fn py_type(&self) -> String {
         format!("{}", self.get().object_type())
@@ -130,7 +129,7 @@ impl PyActions {
 
     pub fn __str__(&self) -> String {
         unpack_py_enum! {
-            &self.0 => ActionContainer(actions);
+            [ActionContainer](actions) = self.get();
             format!("{}", actions)
         }
     }
@@ -157,7 +156,7 @@ macro_rules! build_strat_with_type {
                 if container.object_type() != ObjectType::$obj_type {
                     return Err(value_error("All actions must be of the same type"));
                 }
-                let actions = unpack_py_enum_expect!(container => ActionContainer::$obj_type(actions))?;
+                let actions = unpack_py_enum_expect!(container => ActionContainer::$obj_type)?;
                 actions_list.push(actions);
             }
             Self(StrategyContainer::$obj_type(Strategies::from_actions(actions_list)))
