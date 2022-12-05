@@ -88,6 +88,8 @@ impl PySolverResult {
         }
     }
 
+    // todo: add method to get more detailed information about sigma, s, p, payoffs, etc.
+
     pub fn __str__(&self) -> String {
         let s_string = match self.get() {
             Some(s) => s.iter().enumerate().map(|(t, a)|
@@ -157,21 +159,27 @@ macro_rules! solve_with {
     }
 }
 
+fn downcast_to_eocwin<A: ActionType + Clone + 'static>(x: &Box<dyn Aggregator<A>>) -> Option<&aggregator::EndsOnContestWin<A, aggregator::DynStateDiscounter<A>>> {
+    x.downcast_ref::<EndsOnContestWin<A, DynStateDiscounter<A>>>()
+}
 
 def_py_enum!(AggregatorContainer(Box<dyn Aggregator>));
 
 #[derive(Clone)]
 #[pyclass(name = "Aggregator")]
-pub struct PyAggregator(pub AggregatorContainer);
-pycontainer!(PyAggregator(AggregatorContainer));
+pub struct PyAggregator {
+    pub aggregator: AggregatorContainer,
+    pub end_on_win: bool,
+}
+pycontainer!(PyAggregator(aggregator: AggregatorContainer));
 
 #[pymethods]
 impl PyAggregator {
     #[new]
     #[args(end_on_win = "false")]
     pub fn new(state: &PyAny, gammas: Vec<f64>, end_on_win: bool) -> PyResult<Self> {
-        Ok(Self(
-            unpack_py_enum! {
+        Ok(Self {
+            aggregator: unpack_py_enum! {
                 [StateContainer](state) = as_state(state).unpack();
                 {
                     let discounter = match DynStateDiscounter::new(state, Array::from(gammas)) {
@@ -188,8 +196,9 @@ impl PyAggregator {
                         Box::new(discounter)
                     }
                 } => AggregatorContainer
-            }
-        ))
+            },
+            end_on_win
+        })
     }
 
     #[staticmethod]
@@ -219,6 +228,20 @@ impl PyAggregator {
         unpack_py_enum! {
             [AggregatorContainer, StrategyContainer](aggregator, strategies) = self.get(), pystrategies.get();
             Ok(aggregator.u(&strategies).into_pyarray(py))
+        }
+    }
+
+    pub fn probas<'py>(&self, py: Python<'py>, strategies: Vec<PyActions>) -> PyResult<&'py PyArray2<f64>> {
+        if !self.end_on_win {
+            return Err(PyErr::new::<PyTypeError, _>("Can only calculate probas if end_on_win == true"));
+        }
+        let pystrategies = PyStrategies::from_actions_list(strategies)?;
+        unpack_py_enum! {
+            [AggregatorContainer, StrategyContainer](agg_box, strategies) = self.get(), pystrategies.get();
+            {
+                let aggregator = downcast_to_eocwin(agg_box).unwrap();
+                Ok(aggregator.probas(&strategies).into_pyarray(py))
+            }
         }
     }
 
@@ -282,7 +305,7 @@ impl PyAggregator {
     }
 
     pub fn __str__(&self) -> String {
-        format!("Aggregator: atype = {}", self.atype())
+        format!("Aggregator: atype = {}, end_on_win = {}", self.atype(), self.end_on_win)
     }
 }
 

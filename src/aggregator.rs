@@ -1,3 +1,4 @@
+use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::{DynClone, clone_trait_object};
 use numpy::Ix2;
 use numpy::ndarray::{Array, Ix1};
@@ -5,7 +6,7 @@ use numpy::ndarray::{Array, Ix1};
 use crate::prelude::*;
 
 
-pub trait Aggregator<A: ActionType>: StateIterator<A> + DynClone + Send + Sync {
+pub trait Aggregator<A: ActionType>: StateIterator<A> + Downcast + DynClone + Send + Sync {
     fn n(&self) -> usize;
     fn u_i(&self, i: usize, strategies: &Strategies<A>) -> f64;
     fn u(&self, strategies: &Strategies<A>) -> Array<f64, Ix1> {
@@ -14,13 +15,14 @@ pub trait Aggregator<A: ActionType>: StateIterator<A> + DynClone + Send + Sync {
 }
 
 clone_trait_object!(<A> Aggregator<A> where A: ActionType);
+impl_downcast!(Aggregator<A> where A: ActionType);
 
 
 pub trait Discounter {
     fn gammas(&self) -> &Array<f64, Ix1>;
 }
 
-impl<A: ActionType + 'static, T: StateIterator<A> + Discounter> Aggregator<A> for T {
+impl<A: ActionType + 'static, T: StateIterator<A> + Discounter + 'static> Aggregator<A> for T {
     fn n(&self) -> usize {
         self.state0().n()
     }
@@ -127,7 +129,7 @@ where A: ActionType,
 
 impl<A, C> EndsOnContestWin<A, C>
 where A: ActionType + Clone + 'static,
-      C: Discounter + StateIterator<A> + Clone
+      C: Discounter + StateIterator<A> + Clone + 'static
 {
     pub fn new(child: C) -> Result<Self, &'static str> {
         // check that the states given by the child have ModularPayoff beliefs
@@ -178,7 +180,7 @@ where A: ActionType + Clone,
 
 impl<A, C> Aggregator<A> for EndsOnContestWin<A, C>
 where A: ActionType + Clone + 'static,
-      C: Discounter + StateIterator<A> + Clone
+      C: Discounter + StateIterator<A> + Clone + 'static
 {
     fn n(&self) -> usize {
         self.child.n()

@@ -6,20 +6,27 @@ import sys
 from time import time
 
 class Tester:
-    def __init__(self, n, t):
+    def __init__(
+        self, n, t,
+        a = 10., alpha = 0.5, b = 1., beta = 0.5,
+        theta = 0.5,
+        d = 1.,
+    ):
         self.n = n
         self.t = t
         
-        self.gammas = np.linspace(0.1, 0.9, n)
+        # player 1 discounts the most, player n doesn't discount at all
+        self.gammas = np.linspace(0.9, 1., n)
 
         self.prodFunc = dp.ProdFunc(
-            a = np.full(n, 10.),
-            alpha = np.full(n, 0.5),
-            b = np.full(n, 1.),
-            beta = np.full(n, 0.5),
+            a = np.full(n, a),
+            alpha = np.full(n, alpha),
+            b = np.full(n, b),
+            beta = np.full(n, beta),
         )
         self.rewardFunc = dp.RewardFunc(n)
-        self.riskFunc = dp.RiskFunc.winner_only(np.full(n, 0.5))
+        self.riskFunc = dp.RiskFunc.winner_only(np.full(n, theta))
+        self.d = np.full(n, d)
     
     def solve_agg(self, agg, strat_type = 'strategies', plot = False):
         print(f"Solving for optimal {strat_type}, with {self.n} players and {self.t} time steps...")
@@ -36,14 +43,14 @@ class Tester:
             dp.plot(optimum, title = f"Optimal {strat_type}")
         return res
     
-    def get_basic_agg(self, end_on_win = False):
+    def get_basic_agg(self, end_on_win = False, r = 0.1):
         payoffFunc = dp.PayoffFunc(
             prod_func = self.prodFunc,
             reward_func = self.rewardFunc,
             csf = dp.CSF.default(),
             risk_func = self.riskFunc,
-            d = np.full(self.n, 1.),
-            cost_func = dp.CostFunc.fixed_basic(np.full(self.n, 0.1)),
+            d = self.d,
+            cost_func = dp.CostFunc.fixed_basic(np.full(self.n, r)),
         )
 
         return dp.Aggregator(
@@ -56,16 +63,16 @@ class Tester:
         agg = self.get_basic_agg(end_on_win)
         return self.solve_agg(agg, plot = plot)
 
-    def get_invest_agg(self, end_on_win = False):
+    def get_invest_agg(self, end_on_win = False, r = 0.1, r_inv = 0.01):
         payoffFunc = dp.PayoffFunc(
             prod_func = self.prodFunc,
             reward_func = self.rewardFunc,
             csf = dp.CSF.maybe_no_win(),
             risk_func = self.riskFunc,
-            d = np.full(self.n, 1.),
+            d = self.d,
             cost_func = dp.CostFunc.fixed_invest(
-                np.full(self.n, 0.1),
-                np.full(self.n, 0.01),
+                np.full(self.n, r),
+                np.full(self.n, r_inv),
             ),
         )
 
@@ -79,7 +86,7 @@ class Tester:
         agg = self.get_invest_agg(end_on_win)
         return self.solve_agg(agg, strat_type = 'invest strategies', plot = plot)
 
-    def get_sharing_agg(self, end_on_win = False):
+    def get_sharing_agg(self, end_on_win = False, r = 0.1, r_inv = 0.01):
         payoffFunc = dp.PayoffFunc(
             prod_func = self.prodFunc,
             reward_func = self.rewardFunc,
@@ -87,8 +94,8 @@ class Tester:
             risk_func = self.riskFunc,
             d = np.full(self.n, 1.),
             cost_func = dp.CostFunc.fixed_sharing(
-                np.full(self.n, 0.1),
-                np.full(self.n, 0.01),
+                r = np.full(self.n, r),
+                r_inv = np.full(self.n, r_inv),
             ),
         )
 
@@ -102,17 +109,17 @@ class Tester:
         agg = self.get_sharing_agg(end_on_win)
         return self.solve_agg(agg, strat_type = 'sharing + invest strategies', plot = plot)
 
-    def solve_scenario(self, end_on_win = False):
-        # create two prod funcs with different values of theta
+    def solve_scenario(self, end_on_win = False, thetas = None):
+        # create multiple prod funcs with different values of theta
         payoff_funcs = dp.PayoffFunc.expand_from(
             prod_func_list = [self.prodFunc],
             risk_func_list = [
-                dp.RiskFunc.winner_only(np.full(self.n, 0.5)),
-                dp.RiskFunc.winner_only(np.full(self.n, 1.0))
+                dp.RiskFunc.winner_only(np.full(self.n, theta)) \
+                    for theta in (thetas or [0., 0.25, 0.5, 0.75, 1.])
             ],
             csf_list = [dp.CSF.maybe_no_win()],
             reward_func_list = [self.rewardFunc],
-            d_list = [np.full(self.n, 1.)],
+            d_list = [self.d],
             cost_func_list = [dp.CostFunc.fixed_invest(
                 np.full(self.n, 0.1),
                 np.full(self.n, 0.01),

@@ -24,6 +24,8 @@ impl<A: ActionType + Clone> InitGuess<A> {
     }
 }
 
+
+// TODO: Add option to save trace of solver progress
 #[derive(Clone)]
 pub struct SolverOptions<A: ActionType + Clone> {
     pub init_guess: InitGuess<A>,
@@ -77,7 +79,7 @@ struct PlayerObjective<'a, A: ActionType + Clone>{
 
 // implement traits needed for argmin
 
-impl<A: ActionType + Clone> CostFunction for PlayerObjective<'_, A> {
+impl<A: ActionType + Clone + 'static> CostFunction for PlayerObjective<'_, A> {
     type Param = Vec<f64>;
     type Output = f64;
 
@@ -107,7 +109,7 @@ fn create_simplex(init_guess: ArrayView<f64, Ix2>, init_simplex_size: f64) -> Ve
 }
 
 fn solve_for_i<A>(i: usize, strat: &Strategies<A>, agg: &dyn Aggregator<A>, options: &NMOptions) -> Result<Array<f64, Ix2>, argmin::core::Error>
-where A: ActionType + Clone
+where A: ActionType + Clone + 'static
 {
     let init_simplex = create_simplex(
         strat.data().slice(s![.., i, ..]),
@@ -129,7 +131,7 @@ where A: ActionType + Clone
 }
 
 fn update_strat<A>(strat: &mut Strategies<A>, agg: &dyn Aggregator<A>, nm_options: &NMOptions) -> Result<(), argmin::core::Error>
-where A: ActionType + Clone
+where A: ActionType + Clone + 'static
 {
     let new_data = (0..strat.n()).into_par_iter().map(|i| {
         solve_for_i(i, strat, agg, nm_options)
@@ -140,26 +142,24 @@ where A: ActionType + Clone
     Ok(())
 }
 
-fn within_tol<A: ActionType>(current: &Strategies<A>, last: &Strategies<A>, tol: f64) -> bool {
-    isapprox_iters(
-        current.data().iter().map(|x| x.ln()),
-        last.data().iter().map(|x| x.ln()),
-        tol, f64::EPSILON.sqrt()
-    )
-}
-
 pub fn solve<A>(agg: &dyn Aggregator<A>, options: &SolverOptions<A>) -> Result<Strategies<A>, argmin::core::Error>
-where A: ActionType + Clone
+where A: ActionType + Clone + 'static
 {
-    let mut current_strat = options.init_guess.to_fixed(agg.n());
+    let mut strat = options.init_guess.to_fixed(agg.n());
+    let mut last_payoffs = agg.u(&strat);
     for i in 0..options.max_iters {
-        let last_strat = current_strat.clone();
-        update_strat(&mut current_strat, agg, &options.nm_options)?;
-        if within_tol(&current_strat, &last_strat, options.tol) {
+        update_strat(&mut strat, agg, &options.nm_options)?;
+        let new_payoffs = agg.u(&strat);
+        if isapprox_iters(
+            new_payoffs.clone().into_iter(),
+            last_payoffs.into_iter(),
+            options.tol, f64::EPSILON.sqrt()
+        ) {
             println!("Exited on iteration {}", i);
-            return Ok(current_strat);
+            return Ok(strat);
         }
+        last_payoffs = new_payoffs;
     }
     println!("Reached max iterations ({})", options.max_iters);
-    Ok(current_strat)
+    Ok(strat)
 }
