@@ -6,45 +6,57 @@ use crate::{init_rep, pycontainer, def_py_enum, unpack_py_enum, unpack_py_enum_e
 
 #[pyclass(name = "SolverOptions")]
 pub struct PySolverOptions {
-    pub max_iters: u64,
+    pub iters: u64,
     pub tol: f64,
     pub init_simplex_size: f64,
-    pub nm_max_iters: u64,
+    pub nm_iters: u64,
     pub nm_tol: f64,
+    pub hist_size: usize,
+    pub mixed_samples: usize,
+    pub parallel: bool,
 }
 
 const DEFAULT_OPTIONS: PySolverOptions = PySolverOptions {
-    max_iters: 200,
+    iters: 200,
     tol: 1e-6,
     init_simplex_size: 0.1,
-    nm_max_iters: 200,
-    nm_tol: 1e-8
+    nm_iters: 200,
+    nm_tol: 1e-8,
+    hist_size: 10,
+    mixed_samples: 100,
+    parallel: true,
 };
 
 #[pymethods]
 impl PySolverOptions {
     #[new]
     #[args(
-        max_iters = "DEFAULT_OPTIONS.max_iters",
+        iters = "DEFAULT_OPTIONS.iters",
         tol = "DEFAULT_OPTIONS.tol",
         init_simplex_size = "DEFAULT_OPTIONS.init_simplex_size",
-        nm_max_iters = "DEFAULT_OPTIONS.nm_max_iters",
+        nm_iters = "DEFAULT_OPTIONS.nm_iters",
         nm_tol = "DEFAULT_OPTIONS.nm_tol",
+        hist_size = "DEFAULT_OPTIONS.hist_size",
+        mixed_samples = "DEFAULT_OPTIONS.mixed_samples",
+        parallel = "DEFAULT_OPTIONS.parallel"
     )]
     fn new(
-        max_iters: u64,
+        iters: u64,
         tol: f64,
         init_simplex_size: f64,
-        nm_max_iters: u64,
+        nm_iters: u64,
         nm_tol: f64,
+        hist_size: usize,
+        mixed_samples: usize,
+        parallel: bool,
     ) -> Self {
-        PySolverOptions { max_iters, tol, init_simplex_size, nm_max_iters, nm_tol }
+        PySolverOptions { iters, tol, init_simplex_size, nm_iters, nm_tol, hist_size, mixed_samples, parallel }
     }
 
     fn __str__(&self) -> String {
         format!(
-            "SolverOptions:\nmax_iters = {}\ntol = {}\ninit_simplex_size = {}\nnm_max_iters = {}\nnm_tol = {}",
-            self.max_iters, self.tol, self.init_simplex_size, self.nm_max_iters, self.nm_tol
+            "SolverOptions:\niters = {}\ntol = {}\ninit_simplex_size = {}\nnm_iters = {}\nnm_tol = {}",
+            self.iters, self.tol, self.init_simplex_size, self.nm_iters, self.nm_tol
         )
     }
 }
@@ -104,13 +116,16 @@ impl PySolverResult {
 fn expand_options<A: ActionType + Clone>(init_guess: InitGuess<A>, options: &PySolverOptions) -> SolverOptions<A> {
     SolverOptions {
         init_guess: init_guess,
-        max_iters: options.max_iters,
+        iters: options.iters,
         tol: options.tol,
         nm_options: NMOptions {
             init_simplex_size: options.init_simplex_size,
-            max_iters: options.nm_max_iters,
+            iters: options.nm_iters,
             tol: options.nm_tol,
-        }
+        },
+        hist_size: options.hist_size,
+        mixed_samples: options.mixed_samples,
+        parallel: options.parallel,
     }
 }
 

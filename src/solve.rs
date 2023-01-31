@@ -29,35 +29,19 @@ impl<A: ActionType + Clone> InitGuess<A> {
 #[derive(Clone)]
 pub struct SolverOptions<A: ActionType + Clone> {
     pub init_guess: InitGuess<A>,
-    pub max_iters: u64,
+    pub iters: u64,
     pub tol: f64,
     pub nm_options: NMOptions,
-}
-
-impl<A: ActionType + Clone> SolverOptions<A> {
-    pub fn from_init_guess(init_guess: Strategies<A>) -> Self {
-        SolverOptions {
-            init_guess: InitGuess::Fixed(init_guess),
-            max_iters: 200,
-            tol: 1e-6,
-            nm_options: NMOptions::default(),
-        }
-    }
-
-    pub fn random_init(t: usize) -> Self {
-        SolverOptions {
-            init_guess: InitGuess::Random(t),
-            max_iters: 200,
-            tol: 1e-6,
-            nm_options: NMOptions::default(),
-        }
-    }
+    // last two options needed only for mixed solver
+    pub hist_size: usize,
+    pub mixed_samples: usize,
+    pub parallel: bool,
 }
 
 #[derive(Clone, Debug)]
 pub struct NMOptions {
     pub init_simplex_size: f64,
-    pub max_iters: u64,
+    pub iters: u64,
     pub tol: f64,
 }
 
@@ -65,36 +49,12 @@ impl Default for NMOptions {
     fn default() -> Self {
         NMOptions {
             init_simplex_size: 0.1,
-            max_iters: 200,
+            iters: 200,
             tol: 1e-8,
         }
     }
 }
 
-struct PlayerObjective<'a, A: ActionType + Clone>{
-    pub payoff_aggregator: &'a dyn Aggregator<A>,
-    pub i: usize,
-    pub base_strategies: &'a Strategies<A>,
-}
-
-// implement traits needed for argmin
-
-impl<A: ActionType + Clone + 'static> CostFunction for PlayerObjective<'_, A> {
-    type Param = Vec<f64>;
-    type Output = f64;
-
-    fn cost(&self, params: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
-        let mut strategies = self.base_strategies.clone();
-        strategies.set_i(
-            self.i,
-            Array::from_shape_vec(
-                (self.base_strategies.t(), A::nparams()),
-                params.iter().map(|x| x.exp()).collect(),
-            )?
-        );
-        Ok(-self.payoff_aggregator.u_i(self.i, &strategies))
-    }
-}
 
 fn create_simplex(init_guess: ArrayView<f64, Ix2>, init_simplex_size: f64) -> Vec<Vec<f64>> {
     let mut simplex = Vec::new();
@@ -106,6 +66,34 @@ fn create_simplex(init_guess: ArrayView<f64, Ix2>, init_simplex_size: f64) -> Ve
     }
     simplex.push(base);
     simplex
+}
+
+
+// pure strategy solver types + methods
+
+struct PlayerObjective<'a, A: ActionType + Clone>{
+    pub payoff_aggregator: &'a dyn Aggregator<A>,
+    pub i: usize,
+    pub base_strategies: &'a Strategies<A>,
+}
+
+impl<A: ActionType + Clone + 'static> CostFunction for PlayerObjective<'_, A> {
+    type Param = Vec<f64>;
+    type Output = f64;
+
+    fn cost(&self, params: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
+        // unfortunately have to clone strategies every time
+        // since cost doesn't allow mutable self
+        let mut strategies = self.base_strategies.clone();
+        strategies.set_i(
+            self.i,
+            Array::from_shape_vec(
+                (self.base_strategies.t(), A::nparams()),
+                params.iter().map(|x| x.exp()).collect(),
+            )?
+        );
+        Ok(-self.payoff_aggregator.u_i(self.i, &strategies))
+    }
 }
 
 fn solve_for_i<A>(i: usize, strat: &Strategies<A>, agg: &dyn Aggregator<A>, options: &NMOptions) -> Result<Array<f64, Ix2>, argmin::core::Error>
@@ -122,7 +110,7 @@ where A: ActionType + Clone + 'static
     };
     let solver = NelderMead::new(init_simplex).with_sd_tolerance(options.tol)?;
     let res = Executor::new(obj, solver)
-        .configure(|state| state.max_iters(options.max_iters))
+        .configure(|state| state.max_iters(options.iters))
         .run()?;
     Ok(Array::from_shape_vec(
         (strat.t(), <A as ActionType>::nparams()),
@@ -147,7 +135,7 @@ where A: ActionType + Clone + 'static
 {
     let mut strat = options.init_guess.to_fixed(agg.n());
     let mut last_payoffs = agg.u(&strat);
-    for i in 0..options.max_iters {
+    for i in 0..options.iters {
         update_strat(&mut strat, agg, &options.nm_options)?;
         let new_payoffs = agg.u(&strat);
         if isapprox_iters(
@@ -160,6 +148,86 @@ where A: ActionType + Clone + 'static
         }
         last_payoffs = new_payoffs;
     }
-    println!("Reached max iterations ({})", options.max_iters);
+    println!("Reached max iterations ({})", options.iters);
     Ok(strat)
+}
+
+
+// now for mixed solver:
+
+struct MixedPlayerObjective<'a, A: ActionType + Clone>{
+    pub payoff_aggregator: &'a dyn Aggregator<A>,
+    pub i: usize,
+    pub shape: (usize, usize),
+    pub base_strategies: &'a Vec<Strategies<A>>,
+}
+
+impl<A: ActionType + Clone + 'static> CostFunction for MixedPlayerObjective<'_, A> {
+    type Param = Vec<f64>;
+    type Output = f64;
+
+    fn cost(&self, params: &Self::Param) -> Result<Self::Output, argmin::core::Error> {
+        let params = Array::from_shape_vec(
+            self.shape,
+            params.iter().map(|x| x.exp()).collect(),
+        )?;
+        let mut out = 0.;
+        for mut strategies in self.base_strategies.clone().into_iter() {
+            strategies.set_i(self.i, params.clone());
+            out -= self.payoff_aggregator.u_i(self.i, &strategies);
+        }
+        Ok(out)
+    }
+}
+
+fn solve_for_i_mixed<A>(i: usize, hist: &Vec<Strategies<A>>, agg: &dyn Aggregator<A>, new_init: 
+    ArrayView<f64, Ix2>, options: &NMOptions) -> Result<Array<f64, Ix2>, argmin::core::Error>
+where A: ActionType + Clone + 'static
+{
+    let (t, _, n_goods) = hist[0].data().dim();
+    let init_simplex = create_simplex(
+        new_init,
+        options.init_simplex_size
+    );
+    let mut hist = hist.clone();
+    let obj = MixedPlayerObjective {
+        payoff_aggregator: agg,
+        i,
+        shape: (t, n_goods),
+        base_strategies: &mut hist,
+    };
+    let solver = NelderMead::new(init_simplex).with_sd_tolerance(options.tol)?;
+    let res = Executor::new(obj, solver)
+        .configure(|state| state.max_iters(options.iters))
+        .run()?;
+    Ok(Array::from_shape_vec(
+        (t, n_goods),
+        res.state.best_param.unwrap().iter().map(|x| x.exp()).collect(),
+    )?)
+}
+
+fn update_strat_mixed<A>(hist: &mut Vec<Strategies<A>>, hist_idx: usize, agg: &dyn Aggregator<A>, nm_options: &NMOptions) -> Result<(), argmin::core::Error>
+where A: ActionType + Clone + 'static
+{
+    let (t, n, _) = hist[0].data().dim();
+    let new_inits = Strategies::<A>::random(t, n, INIT_MU, INIT_SIGMA).unwrap().data();
+    let new_data = (0..n).into_par_iter().map(|i| {
+        solve_for_i_mixed(i, hist, agg, new_inits.slice(s![i, .., ..]), nm_options)
+    }).collect::<Result<Vec<_>,_>>()?;
+    for (i, x) in new_data.into_iter().enumerate() {
+        hist[hist_idx].set_i(i, x);
+    }
+    Ok(())
+}
+
+pub fn solve_mixed<A>(agg: &dyn Aggregator<A>, options: &SolverOptions<A>) -> Result<Vec<Strategies<A>>, argmin::core::Error>
+where A: ActionType + Clone + 'static
+{
+    let mut strats = (0..options.hist_size).map(|_| options.init_guess.to_fixed(agg.n())).collect::<Vec<_>>();
+    for _i in 0..options.iters {
+        for j in 0..options.hist_size {
+            update_strat_mixed(&mut strats, j, agg, &options.nm_options)?;
+        }
+    }
+    Ok(strats)
 }
